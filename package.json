@@ -6,5 +6,8 @@
     "build": "npm run build --prefix web",
     "test": "npm run test --prefix web",
     "preview": "npm run preview --prefix web"
+  },
+  "dependencies": {
+    "tesseract.js": "^7.0.0"
   }
 }

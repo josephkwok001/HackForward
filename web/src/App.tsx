@@ -5,7 +5,7 @@ import { prepareEvidence } from "./evidence";
 import { FLAG_BLURB, FLAG_LABEL, INCIDENT_LABEL, SAMPLE_MESSAGE, STAGE_BLURB, STAGE_LABEL } from "./sources";
 import type { EvidencePacket, IncidentState, IntakeMode, StageAssessResult } from "./types";
 
-type View = "intake" | "preparing" | "working" | "record";
+type View = "intake" | "working" | "record";
 type IntakeRecord = Pick<
   IncidentState,
   | "thread_id"
@@ -17,13 +17,12 @@ type IntakeRecord = Pick<
   | "redaction_notice"
 >;
 
-const PREPARE_STEPS = ["Read screenshot", "Remove secrets"];
-const WORK_STEPS = [
-  "Secure the evidence",
-  "Extract observed facts",
-  "Assess stage on Amazon Bedrock",
-  "Create incident record",
-];
+const URGENT_FLAGS = new Set([
+  "payment_in_progress",
+  "funds_already_moved",
+  "requested_otp",
+  "requested_remote_access",
+]);
 
 function toRecord(state: IncidentState): IntakeRecord {
   return {
@@ -48,7 +47,6 @@ export default function App() {
   const [state, setState] = useState<IncidentState | null>(null);
   const [assessment, setAssessment] = useState<StageAssessResult | null>(null);
   const [adding, setAdding] = useState(false);
-  const [workTick, setWorkTick] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -56,18 +54,6 @@ export default function App() {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
   }, [previewUrl]);
-
-  useEffect(() => {
-    if (view === "preparing") {
-      setWorkTick(0);
-      const timers = [0, 1].map((i) => window.setTimeout(() => setWorkTick(i + 1), 500 + i * 500));
-      return () => timers.forEach(clearTimeout);
-    }
-    if (view !== "working") return;
-    setWorkTick(0);
-    const timers = [0, 1, 2, 3].map((i) => window.setTimeout(() => setWorkTick(i + 1), 500 + i * 450));
-    return () => timers.forEach(clearTimeout);
-  }, [view]);
 
   function resetIntakeFields() {
     setText("");
@@ -84,7 +70,7 @@ export default function App() {
       return;
     }
     setError(null);
-    setView("preparing");
+    setView("working");
     try {
       const nextPacket = await prepareEvidence({ text, file, mode: file ? "screenshot" : mode });
       setPacket(nextPacket);
@@ -103,15 +89,11 @@ export default function App() {
       setState(assessed);
       setAssessment(seedFromRules(assessed));
       resetIntakeFields();
-      setView("working");
-      const started = Date.now();
       try {
         setAssessment(await fetchAssess(toAssessRequest(assessed)));
       } catch {
         /* Keep the keyword seed so the record page never goes blank. */
       }
-      const wait = Math.max(0, 1800 - (Date.now() - started));
-      if (wait) await new Promise((resolve) => window.setTimeout(resolve, wait));
       setAdding(false);
       setView("record");
     } catch (cause) {
@@ -149,14 +131,9 @@ export default function App() {
       <header className="top">
         <div className="brand">
           <span className="mark" aria-hidden="true" />
-          <div>
-            <p className="wordmark">ScamSafe</p>
-            <p className="tag">Capture the facts. Decide what comes next later.</p>
-          </div>
+          <p className="wordmark">ScamSafe</p>
         </div>
-        <p className="disclaimer">
-          This creates an incident record only. Do not share passwords, OTPs, PINs, or full card numbers.
-        </p>
+        <p className="privacy-label"><span aria-hidden="true">●</span> Private by default</p>
       </header>
 
       <main>
@@ -180,17 +157,7 @@ export default function App() {
           />
         )}
 
-        {view === "preparing" && (
-          <Working
-            tick={workTick}
-            title="Checking what you shared"
-            steps={file ? PREPARE_STEPS : ["Remove secrets"]}
-          />
-        )}
-
-        {view === "working" && (
-          <Working tick={workTick} title="Building your incident record" steps={WORK_STEPS} />
-        )}
+        {view === "working" && <Working />}
 
         {view === "record" && record && assessment && (
           <RecordView
@@ -207,13 +174,6 @@ export default function App() {
         )}
       </main>
 
-      <footer className="foot">
-        {record && (
-          <button className="textish" type="button" onClick={startOver}>
-            Start over
-          </button>
-        )}
-      </footer>
     </div>
   );
 }
@@ -233,11 +193,9 @@ function Intake(props: {
 }) {
   return (
     <section className="panel">
-      <p className="eyebrow">{props.adding ? "Add evidence" : "Incident intake"}</p>
       <h1>{props.adding ? "What else should we record?" : "What happened?"}</h1>
       <p className="lede">
-        Share a message, your description, or a screenshot. We will extract a factual incident
-        record — no advice yet.
+        Paste the message, describe it, or upload a screenshot.
       </p>
       <form onSubmit={props.onSubmit}>
         <div className="tabs" role="tablist">
@@ -282,12 +240,12 @@ function Intake(props: {
               <img className="thumb" src={props.previewUrl} alt="Attached screenshot preview" />
             )}
             <p className="muted">
-              The image stays on this device as a file reference. If reading fails, type what it says.
+              The image stays on this device. If we cannot read it, we will ask for a short note.
             </p>
           </div>
         )}
-        <p className="helper">
-          You can submit text, a screenshot, or both. Sensitive values are redacted before storage.
+        <p className="privacy-note">
+          <span aria-hidden="true">✓</span> Sensitive numbers are removed automatically.
         </p>
         {props.error && (
           <p className="error" role="alert">
@@ -309,24 +267,14 @@ function Intake(props: {
   );
 }
 
-function Working({ tick, title, steps }: { tick: number; title: string; steps: string[] }) {
+function Working() {
   return (
     <section className="panel working" aria-live="polite">
       <div className="loader" aria-hidden="true"><span /></div>
-      <p className="eyebrow">Processing intake</p>
-      <h1>{title}</h1>
+      <h1>Creating your record</h1>
       <p className="working-copy">
-        Extracting what was observed, then classifying stage and risk on Amazon Bedrock.
+        Removing sensitive details and organising what you shared.
       </p>
-      <ol className="steps">
-        {steps.map((step, index) => (
-          <li key={step} className={tick > index ? "done" : tick === index ? "now" : ""}>
-            <span className="step-icon" aria-hidden="true">{tick > index ? "✓" : tick === index ? "" : "·"}</span>
-            <span>{step}</span>
-            {tick === index && <span className="step-status">In progress</span>}
-          </li>
-        ))}
-      </ol>
     </section>
   );
 }
@@ -352,75 +300,70 @@ function RecordView({
   onAdd: () => void;
   onStartOver: () => void;
 }) {
-  const [showQuote, setShowQuote] = useState(false);
   const quote = fullObservation(record);
-  const quoteLong = Boolean(quote && quote.length > 160);
-  const quoteText = quote && quoteLong && !showQuote ? `${quote.slice(0, 157)}…` : quote;
   const flags = assessment.risk_flags.filter((flag) => flag !== "insufficient_evidence");
   const notes = [...new Set([...record.uncertainty_notes, ...assessment.uncertainty_notes])].filter(
     (note) => assessment.source !== "bedrock" || !/model skipped/i.test(note),
   );
+  const incidentLabel = INCIDENT_LABEL[record.incident_type] ?? record.incident_type;
   return (
-    <section className="panel">
-      <p className="eyebrow">Record created</p>
-      <h1>Here is what we captured</h1>
-      {record.redaction_notice && <p className="notice">{record.redaction_notice}</p>}
-      {packet?.ocr_excerpt && (
-        <p className="notice ok">
-          {packet.ocr_status === "weak"
-            ? "We only partly read the screenshot. Secrets were removed: "
-            : "Read from the screenshot. Secrets were removed: "}
-          {packet.ocr_excerpt}
+    <section className="panel record-panel">
+      <div className="record-heading">
+        <div>
+          <p className="record-status"><span aria-hidden="true">✓</span> Record created</p>
+          <h1>{incidentLabel}</h1>
+        </div>
+      </div>
+
+      {(record.redaction_notice || packet?.redaction_notice) && (
+        <p className="privacy-result"><span aria-hidden="true">✓</span> Sensitive values were removed.</p>
+      )}
+      {packet?.ocr_status === "weak" && (
+        <p className="notice">
+          We could only partly read the screenshot. Review the captured facts below.
         </p>
       )}
-      <article className="assess-card">
-        <div className="assess-head">
-          <p className="eyebrow">AI assessment</p>
-          <span className={assessment.source === "bedrock" ? "badge on" : "badge"}>
-            {assessment.source === "bedrock" ? "Amazon Bedrock" : "Keyword fallback"}
-          </span>
+
+      <article className="stage-summary">
+        <div>
+          <p className="section-label">Likely stage</p>
+          <p className="stage-name">{STAGE_LABEL[assessment.current_stage]}</p>
         </div>
-        <p className="assess-kicker">Stage</p>
-        <p className="assess-stage">{STAGE_LABEL[assessment.current_stage]}</p>
-        <p className="assess-blurb">{STAGE_BLURB[assessment.current_stage]}</p>
-        <p className="assess-kicker">Risk flags</p>
+        <p>{STAGE_BLURB[assessment.current_stage]}</p>
+      </article>
+
+      <section className="record-section">
+        <h2>Important signals</h2>
         {flags.length ? (
           <ul className="risk-list">
             {flags.map((flag) => (
-              <li key={flag}>
+              <li key={flag} className={URGENT_FLAGS.has(flag) ? "urgent" : "watch"}>
+                <span className="risk-dot" aria-hidden="true" />
                 <strong>{FLAG_LABEL[flag]}</strong>
                 <span>{FLAG_BLURB[flag]}</span>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="muted">No urgent risk flags.</p>
+          <p className="muted">No urgent signals were identified from the current evidence.</p>
         )}
-        {assessment.decision_factors.length > 0 && (
-          <details className="fold">
-            <summary>Why the model chose this</summary>
-            <ListOrEmpty items={assessment.decision_factors} />
-          </details>
-        )}
-      </article>
+      </section>
+
       {assessment.needs_clarification && assessment.unanswered_questions[0] && (
-        <p className="notice">{assessment.unanswered_questions[0]} Use Add more evidence if you can answer this.</p>
+        <p className="notice"><strong>One detail would help:</strong> {assessment.unanswered_questions[0]}</p>
       )}
-      <details className="fold" open>
-        <summary>What we observed</summary>
-        <p className="incident-line">{INCIDENT_LABEL[record.incident_type] ?? record.incident_type}</p>
-        {quoteText && (
-          <div className="fact-summary">
-            <p>{quoteText}</p>
-            {quoteLong && (
-              <button type="button" className="textish" onClick={() => setShowQuote((open) => !open)}>
-                {showQuote ? "Show less" : "Show more"}
-              </button>
-            )}
-          </div>
-        )}
+
+      <section className="record-section">
+        <h2>What we captured</h2>
         <ListOrEmpty items={record.facts_shared} empty="No clear facts extracted yet." />
-      </details>
+      </section>
+
+      {quote && (
+        <details className="fold">
+          <summary>Original evidence</summary>
+          <blockquote>{quote}</blockquote>
+        </details>
+      )}
       <details className="fold">
         <summary>Timeline</summary>
         <ul className="timeline">
@@ -440,16 +383,20 @@ function RecordView({
       )}
       <details className="fold">
         <summary>Case details</summary>
-        <p className="muted">
-          The case ID keeps this incident together when you add more evidence. It is not sent to anyone.
-        </p>
         <p className="case-id">
           <span>Case ID</span>
           <code>{record.thread_id}</code>
         </p>
         <ListOrEmpty items={record.raw_evidence_refs} empty="No file references." />
       </details>
-      <div className="row">
+      <details className="fold">
+        <summary>Technical details</summary>
+        <p className="source-line">
+          Assessment source: {assessment.source === "bedrock" ? "Amazon Bedrock" : "Keyword fallback"}
+        </p>
+        <ListOrEmpty items={assessment.decision_factors} />
+      </details>
+      <div className="row record-actions">
         <button type="button" className="primary" onClick={onAdd}>
           Add more evidence
         </button>
