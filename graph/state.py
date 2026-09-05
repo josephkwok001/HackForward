@@ -1,6 +1,7 @@
-from typing import Literal
+import re
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 Stage = Literal[
     "suspicious_contact",
@@ -55,6 +56,64 @@ class TimelineEvent(BaseModel):
     observation: str = ""
 
 
+_CARD_NUMBER = re.compile(r"(?<!\d)(?:\d[ -]?){13,19}(?!\d)")
+_CODE = re.compile(r"\b\d{6}\b")
+_CODE_CONTEXT = re.compile(r"\b(otp|one[ -]?time|sms code|verification code|code)\b", re.I)
+_PASSWORD = re.compile(r"\bpassword\s*[:=]\s*\S+", re.I)
+_PIN = re.compile(r"\bpin\s*[:=]\s*\d+", re.I)
+_UNTRUSTED_INSTRUCTION = re.compile(
+    r"ignore (all )?(previous|prior|above) instructions|system prompt|you are now",
+    re.I,
+)
+
+
+def _scrub(text: str) -> tuple[str, bool]:
+    next_text = text
+    next_text, card_changed = _CARD_NUMBER.subn("[redacted card number]", next_text)
+    code_changed = bool(_CODE_CONTEXT.search(next_text))
+    if code_changed:
+        next_text, _ = _CODE.subn("[redacted code]", next_text)
+    next_text, password_changed = _PASSWORD.subn("password: [redacted]", next_text)
+    next_text, pin_changed = _PIN.subn("PIN: [redacted]", next_text)
+    next_text, instruction_changed = _UNTRUSTED_INSTRUCTION.subn(
+        "[untrusted instruction removed]", next_text
+    )
+    return next_text, bool(card_changed or code_changed or password_changed or pin_changed or instruction_changed)
+
+
+def _scrub_input(value: Any) -> tuple[dict[str, Any], bool]:
+    data = dict(value) if isinstance(value, dict) else {}
+    changed = False
+    facts = []
+    for fact in data.get("facts_shared", []) or []:
+        cleaned, was_changed = _scrub(str(fact))
+        facts.append(cleaned)
+        changed = changed or was_changed
+    data["facts_shared"] = facts
+
+    events = []
+    for event in data.get("events_and_timeline", []) or []:
+        item = (
+            event.model_dump()
+            if isinstance(event, TimelineEvent)
+            else dict(event)
+            if isinstance(event, dict)
+            else {}
+        )
+        cleaned, was_changed = _scrub(str(item.get("observation", "")))
+        item["observation"] = cleaned
+        events.append(item)
+        changed = changed or was_changed
+    data["events_and_timeline"] = events
+
+    if isinstance(data.get("incident_type"), str):
+        data["incident_type"], was_changed = _scrub(data["incident_type"])
+        changed = changed or was_changed
+    if changed:
+        data["redaction_notice"] = "Sensitive or instruction-like content was removed before assessment."
+    return data, changed
+
+
 class AssessInput(BaseModel):
     """Feature 1 record in; extra intake fields from the UI are ignored."""
 
@@ -66,6 +125,15 @@ class AssessInput(BaseModel):
     incident_type: str = "unknown"
     current_stage: Stage | None = None
     loop_count: int = 0
+    redaction_notice: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def scrub_untrusted_input(cls, value: Any) -> Any:
+        if isinstance(value, cls):
+            return value
+        data, _ = _scrub_input(value)
+        return data
 
 
 class AssessLLMOutput(BaseModel):
@@ -98,6 +166,8 @@ class AssessResult(BaseModel):
     uncertainty_notes: list[str] = Field(default_factory=list)
     source: Literal["bedrock", "rules"] = "rules"
     loop_count: int = 0
+    # Safe observability only; do not return the stored conversation itself.
+    memory_turn_count: int = 0
 
     @field_validator("unanswered_questions")
     @classmethod

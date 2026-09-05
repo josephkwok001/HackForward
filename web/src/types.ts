@@ -121,6 +121,7 @@ export interface StageAssessResult {
   uncertainty_notes: string[];
   source: "bedrock" | "rules";
   loop_count: number;
+  memory_turn_count: number;
 }
 
 export interface EvidencePacket {

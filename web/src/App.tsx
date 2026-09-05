@@ -380,6 +380,11 @@ function RecordView({
             {assessment.source === "bedrock" ? "Amazon Bedrock" : "Keyword fallback"}
           </span>
         </div>
+        <p className="memory-note">
+          {assessment.memory_turn_count === 1
+            ? "Using 1 remembered message"
+            : `Using ${assessment.memory_turn_count} remembered messages`}
+        </p>
         <p className="assess-kicker">Stage</p>
         <p className="assess-stage">{STAGE_LABEL[assessment.current_stage]}</p>
         <p className="assess-blurb">{STAGE_BLURB[assessment.current_stage]}</p>

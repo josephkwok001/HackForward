@@ -216,6 +216,39 @@ curl -X POST http://127.0.0.1:8080/assess \
 
 `POST /invocations` is the same handler, for the later AgentCore seam.
 
+### Feature 5: follow-up and re-planning memory
+
+The assess graph uses LangGraph's `InMemorySaver` checkpoint keyed by
+`thread_id`. Every follow-up request with that same ID loads the previous
+incident record, appends new timeline events and facts, and re-enters the
+`assess` → `safety_gate` workflow. The combined timeline is included in the
+Bedrock prompt, so a configured agent can assess the new message in context
+instead of treating it as a brand-new incident. Events are de-duplicated and
+records from different thread IDs are never merged. The response includes a
+safe `memory_turn_count` so a demo can confirm how many remembered timeline
+events were used without returning the stored conversation.
+
+The browser displays this count on the AI assessment card. If the graph is
+unavailable or takes longer than 15 seconds, the UI keeps the local keyword
+assessment instead of blocking the record view.
+
+For example, send a first message, then send the new evidence using the same
+ID:
+
+```bash
+curl -X POST http://127.0.0.1:8080/assess \
+  -H 'Content-Type: application/json' \
+  -d '{"thread_id":"demo-follow-up","events_and_timeline":[{"time_hint":"first turn","actor":"user","observation":"A caller claimed to be from my bank."}]}'
+
+curl -X POST http://127.0.0.1:8080/assess \
+  -H 'Content-Type: application/json' \
+  -d '{"thread_id":"demo-follow-up","events_and_timeline":[{"time_hint":"follow-up","actor":"user","observation":"They now asked me to transfer money."}]}'
+```
+
+The memory is process-local for this prototype: restarting the Python server
+clears it. Production deployment should replace `InMemorySaver` with a durable
+checkpoint store with retention and access-control rules.
+
 Compare rules vs Bedrock on labelled fixtures:
 
 ```bash

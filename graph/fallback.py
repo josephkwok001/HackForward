@@ -117,6 +117,9 @@ def rules_assess(record: AssessInput) -> AssessResult:
     factors = [f"Rules baseline classified this as {stage.replace('_', ' ')}."]
     if flags:
         factors.append("Keyword signals: " + ", ".join(flags[:3]) + ".")
+    notes = ["Model skipped. Used the keyword rules baseline."]
+    if record.redaction_notice:
+        notes.append(record.redaction_notice)
     return AssessResult(
         thread_id=record.thread_id,
         current_stage=stage,
@@ -124,7 +127,7 @@ def rules_assess(record: AssessInput) -> AssessResult:
         needs_clarification=needs,
         unanswered_questions=questions,
         decision_factors=factors[:3],
-        uncertainty_notes=["Model skipped. Used the keyword rules baseline."],
+        uncertainty_notes=notes,
         source="rules",
         loop_count=record.loop_count + 1,
     )

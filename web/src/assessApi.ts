@@ -18,6 +18,7 @@ export function seedFromRules(state: IncidentState): StageAssessResult {
     uncertainty_notes: state.uncertainty_notes,
     source: "rules",
     loop_count: state.loop_count,
+    memory_turn_count: state.events_and_timeline.length,
   };
 }
 
@@ -33,13 +34,20 @@ export function toAssessRequest(state: IncidentState): StageAssessRequest {
 }
 
 export async function fetchAssess(request: StageAssessRequest): Promise<StageAssessResult> {
-  const response = await fetch("/assess", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-  });
-  if (!response.ok) {
-    throw new Error(`Assess failed (${response.status})`);
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await fetch("/assess", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`Assess failed (${response.status})`);
+    }
+    return (await response.json()) as StageAssessResult;
+  } finally {
+    window.clearTimeout(timeout);
   }
-  return (await response.json()) as StageAssessResult;
 }

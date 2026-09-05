@@ -22,6 +22,7 @@ function sampleState(over: Partial<IncidentState> = {}): IncidentState {
     escalation_route: "scamshield_or_1799",
     user_consent: [],
     loop_count: 0,
+    memory_turn_count: 0,
     needs_clarification: true,
     ...over,
   };

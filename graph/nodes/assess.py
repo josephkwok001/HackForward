@@ -39,6 +39,9 @@ def run_assess(record: AssessInput) -> AssessResult:
         raw = _invoke_bedrock(record)
         if raw.current_stage not in raw.candidate_stages and raw.candidate_stages:
             raw.candidate_stages = [*raw.candidate_stages[:1], raw.current_stage][:2]
+        notes = list(raw.uncertainty_notes)
+        if record.redaction_notice:
+            notes.append(record.redaction_notice)
         return AssessResult(
             thread_id=record.thread_id,
             current_stage=raw.current_stage,
@@ -46,7 +49,7 @@ def run_assess(record: AssessInput) -> AssessResult:
             needs_clarification=raw.needs_clarification,
             unanswered_questions=raw.unanswered_questions[:1],
             decision_factors=raw.decision_factors[:3],
-            uncertainty_notes=raw.uncertainty_notes,
+            uncertainty_notes=notes,
             source="bedrock",
             loop_count=record.loop_count + 1,
         )
