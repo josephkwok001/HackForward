@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
+import { fetchAssess, seedFromRules, toAssessRequest } from "./assessApi";
 import { assess } from "./engine";
 import { prepareEvidence } from "./evidence";
-import { SAMPLE_MESSAGE } from "./sources";
-import type { EvidencePacket, IncidentState, IntakeMode } from "./types";
+import { FLAG_LABEL, SAMPLE_MESSAGE, STAGE_LABEL } from "./sources";
+import type { EvidencePacket, IncidentState, IntakeMode, StageAssessResult } from "./types";
 
 type View = "intake" | "preparing" | "working" | "record";
 type IntakeRecord = Pick<
@@ -40,6 +41,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [packet, setPacket] = useState<EvidencePacket | null>(null);
   const [state, setState] = useState<IncidentState | null>(null);
+  const [assessment, setAssessment] = useState<StageAssessResult | null>(null);
   const [adding, setAdding] = useState(false);
   const [workTick, setWorkTick] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -101,8 +103,16 @@ export default function App() {
         prior: adding ? state ?? undefined : undefined,
       });
       setState(assessed);
+      setAssessment(seedFromRules(assessed));
       resetIntakeFields();
       setView("working");
+      void fetchAssess(toAssessRequest(assessed))
+        .then((result) => {
+          setAssessment(result);
+        })
+        .catch(() => {
+          /* Keep the keyword seed so the record page never goes blank. */
+        });
     } catch (cause) {
       setView("intake");
       setError(cause instanceof Error ? cause.message : "Could not read that screenshot. Type what it says instead.");
@@ -124,6 +134,7 @@ export default function App() {
   function startOver() {
     resetIntakeFields();
     setState(null);
+    setAssessment(null);
     setPacket(null);
     setAdding(false);
     setError(null);
@@ -180,9 +191,10 @@ export default function App() {
           <Working tick={workTick} title="Building your incident record" steps={WORK_STEPS} />
         )}
 
-        {view === "record" && record && (
+        {view === "record" && record && assessment && (
           <RecordView
             record={record}
+            assessment={assessment}
             packet={packet}
             onAdd={() => {
               setAdding(true);
@@ -318,11 +330,13 @@ function Working({ tick, title, steps }: { tick: number; title: string; steps: s
 
 function RecordView({
   record,
+  assessment,
   packet,
   onAdd,
   onStartOver,
 }: {
   record: IntakeRecord;
+  assessment: StageAssessResult;
   packet: EvidencePacket | null;
   onAdd: () => void;
   onStartOver: () => void;
@@ -360,9 +374,32 @@ function RecordView({
           ))}
         </ul>
       </RecordSection>
-      {record.uncertainty_notes.length > 0 && (
+      <RecordSection title="Stage">
+        <p>{STAGE_LABEL[assessment.current_stage]}</p>
+      </RecordSection>
+      <RecordSection title="Risk">
+        {assessment.risk_flags.length ? (
+          <ul className="chips">
+            {assessment.risk_flags.map((flag) => (
+              <li key={flag}>{FLAG_LABEL[flag]}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted">No urgent risk flags.</p>
+        )}
+      </RecordSection>
+      <RecordSection title="Why">
+        <ListOrEmpty items={assessment.decision_factors} empty="No decision notes yet." />
+      </RecordSection>
+      {assessment.needs_clarification && assessment.unanswered_questions[0] && (
+        <RecordSection title="One question">
+          <p>{assessment.unanswered_questions[0]}</p>
+          <p className="muted">Use Add more evidence if you can answer this.</p>
+        </RecordSection>
+      )}
+      {[...record.uncertainty_notes, ...assessment.uncertainty_notes].length > 0 && (
         <RecordSection title="Uncertainty">
-          <ListOrEmpty items={record.uncertainty_notes} />
+          <ListOrEmpty items={[...new Set([...record.uncertainty_notes, ...assessment.uncertainty_notes])]} />
         </RecordSection>
       )}
       <RecordSection title="Evidence references">
