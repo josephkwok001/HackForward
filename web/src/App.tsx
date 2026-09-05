@@ -3,6 +3,7 @@ import { fetchAction, seedAction, toActionRequest } from "./actionApi";
 import { fetchAssess, seedFromRules, toAssessRequest } from "./assessApi";
 import { assess } from "./engine";
 import { prepareEvidence } from "./evidence";
+import { inspectIndicators, type IndicatorReport, type LinkStatus } from "./indicators";
 import { FLAG_BLURB, FLAG_LABEL, INCIDENT_LABEL, SAMPLE_MESSAGE, STAGE_BLURB, STAGE_LABEL } from "./sources";
 import type { ActionPlanResult, EvidencePacket, IncidentState, IntakeMode, StageAssessResult } from "./types";
 
@@ -479,6 +480,9 @@ function RecordView({
   const notes = [...new Set([...record.uncertainty_notes, ...assessment.uncertainty_notes])].filter(
     (note) => assessment.source !== "bedrock" || !/model skipped/i.test(note),
   );
+  const indicators = inspectIndicators(
+    record.events_and_timeline.map((event) => event.observation).join("\n"),
+  );
   return (
     <section className="panel">
       <RecordTabs
@@ -528,6 +532,9 @@ function RecordView({
           </details>
         )}
       </article>
+      {(indicators.links.length > 0 || indicators.masked_phone_numbers.length > 0) && (
+        <IndicatorSection report={indicators} />
+      )}
       {assessment.needs_clarification && assessment.unanswered_questions[0] && (
         <p className="notice">{assessment.unanswered_questions[0]} Use Add more evidence if you can answer this.</p>
       )}
@@ -585,6 +592,49 @@ function RecordView({
           Start a new record
         </button>
       </div>
+    </section>
+  );
+}
+
+const INDICATOR_STATUS: Record<LinkStatus, string> = {
+  official_match: "Allow-list match",
+  claimed_org_mismatch: "Domain mismatch",
+  unverified: "Unverified domain",
+};
+
+function IndicatorSection({ report }: { report: IndicatorReport }) {
+  return (
+    <section className="indicator-section" aria-labelledby="indicator-heading">
+      <h2 id="indicator-heading">Links and contact details</h2>
+      {report.claimed_organisations.length > 0 && (
+        <p className="claim-line">
+          Claimed organisation: <strong>{report.claimed_organisations.join(", ")}</strong>
+        </p>
+      )}
+      {report.links.length > 0 && (
+        <ul className="indicator-list">
+          {report.links.map((link, index) => (
+            <li key={`${link.hostname}-${index}`} className={`indicator-${link.status}`}>
+              <div className="indicator-head">
+                <code>{link.hostname}</code>
+                <span>{INDICATOR_STATUS[link.status]}</span>
+              </div>
+              <p>{link.reason}</p>
+              <code className="submitted-link">Submitted as: {link.displayed_url}</code>
+            </li>
+          ))}
+        </ul>
+      )}
+      {report.masked_phone_numbers.length > 0 && (
+        <div className="phone-indicators">
+          {report.masked_phone_numbers.map((number) => (
+            <span key={number}>{number} · not verified</span>
+          ))}
+        </div>
+      )}
+      <p className="indicator-footnote">
+        ScamSafe did not open these links or contact these numbers.
+      </p>
     </section>
   );
 }
