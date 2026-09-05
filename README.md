@@ -1,6 +1,6 @@
 # ScamSafe: shared agentic-AI hackathon toolkit
 
-This repository is the team source of truth for a software-only Singapore scam-response product and the shared skills that guide its design. The application code is intentionally not included yet; this package is the working brief and the reusable thinking toolkit for the team.
+This repository is the team source of truth for a software-only Singapore scam-response product and the shared skills that guide its design. A baseline front end now lives in `web/`. It is a local, rule-based stand-in for the later LangGraph workflow so the team can test the intake → one question → next-action card → re-assess loop before the model layer exists.
 
 ## Product concept
 
@@ -156,7 +156,19 @@ Track schema-validation pass rate, stage/risk accuracy, risk recall for urgent c
 
 ## Run and submission notes
 
-The implementation team should add the actual application command here once the entrypoint is chosen. The workshop deployment seam is a local HTTP service on port `8080` with a `POST /invocations` route; the final README should document the exact command, required AWS region/model access, environment variables, and sample request.
+### Baseline UI
+
+The current UI is frontend-only. It keeps incident state in the browser and uses keyword rules, not Bedrock.
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173`. Use **Use a sample** to walk the bank-impersonation path, answer the one question, confirm the next-action card, then **Something changed** to re-assess the same `thread_id`.
+
+This is not the AgentCore runtime. The workshop deployment seam is still a local HTTP service on port `8080` with a `POST /invocations` route. When that exists, the README should document the exact command, required AWS region/model access, environment variables, and a sample request.
 
 Before submission, complete this checklist:
 

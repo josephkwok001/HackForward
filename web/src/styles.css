@@ -1,0 +1,401 @@
+:root {
+  --bg: #efe7d8;
+  --ink: #1b1712;
+  --muted: #5e574d;
+  --paper: #fffaf1;
+  --line: #d8ccb6;
+  --forest: #1f4d3a;
+  --forest-deep: #143328;
+  --amber: #b56b12;
+  --amber-bg: #f6e3c0;
+  --crimson: #8f2d2d;
+  --crimson-bg: #f3d4d1;
+  --ok: #215c45;
+  --shadow: 0 18px 50px rgba(36, 28, 16, 0.1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  background:
+    radial-gradient(1200px 500px at 10% -10%, rgba(31, 77, 58, 0.08), transparent 50%),
+    var(--bg);
+  font-family: "Atkinson Hyperlegible", "Segoe UI", sans-serif;
+  line-height: 1.5;
+}
+
+h1,
+.wordmark,
+.stamp {
+  font-family: Fraunces, Georgia, serif;
+  font-optical-sizing: auto;
+}
+
+h1 {
+  margin: 0 0 0.6rem;
+  font-size: clamp(1.7rem, 5vw, 2.15rem);
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+button,
+input,
+textarea,
+a {
+  font: inherit;
+}
+
+.app {
+  position: relative;
+  max-width: 40rem;
+  margin: 0 auto;
+  min-height: 100vh;
+  padding: 1.25rem 1.1rem 5.5rem;
+  border-left: 8px solid var(--forest);
+}
+
+.app.risk-watch {
+  border-left-color: var(--amber);
+}
+
+.app.risk-urgent {
+  border-left-color: var(--crimson);
+}
+
+.top {
+  display: grid;
+  gap: 0.65rem;
+  margin-bottom: 1.4rem;
+}
+
+.brand {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.mark {
+  width: 2.1rem;
+  height: 2.4rem;
+  border: 2px solid var(--forest-deep);
+  border-radius: 40% 40% 36% 36%;
+  background:
+    linear-gradient(180deg, transparent 46%, var(--forest) 46%),
+    linear-gradient(90deg, transparent 46%, var(--forest-deep) 46% 54%, transparent 54%);
+}
+
+.wordmark {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 650;
+}
+
+.tag,
+.disclaimer,
+.muted,
+.eyebrow {
+  margin: 0;
+  color: var(--muted);
+}
+
+.tag {
+  font-size: 0.92rem;
+}
+
+.disclaimer {
+  font-size: 0.88rem;
+}
+
+.panel {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 1.15rem;
+  padding: 1.25rem 1.15rem 1.35rem;
+  box-shadow: var(--shadow);
+}
+
+.eyebrow {
+  margin-bottom: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.eyebrow.watch {
+  color: var(--amber);
+}
+
+.eyebrow.urgent {
+  color: var(--crimson);
+}
+
+.lede {
+  margin: 0 0 1.1rem;
+  color: var(--muted);
+}
+
+form,
+.add-more {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.tab,
+.choice,
+.primary,
+.secondary,
+.textish {
+  min-height: 2.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.tab {
+  flex: 1;
+  padding: 0.45rem 0.6rem;
+}
+
+.tab.on {
+  background: var(--forest-deep);
+  border-color: var(--forest-deep);
+  color: #fff;
+}
+
+textarea,
+.summary {
+  width: 100%;
+  padding: 0.85rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  background: #fff;
+  resize: vertical;
+}
+
+textarea:focus {
+  outline: 3px solid rgba(31, 77, 58, 0.28);
+}
+
+.upload {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.thumb {
+  width: min(100%, 16rem);
+  border-radius: 0.75rem;
+  border: 1px solid var(--line);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.primary,
+.secondary {
+  padding: 0.65rem 1.05rem;
+}
+
+.primary {
+  background: var(--forest-deep);
+  border-color: var(--forest-deep);
+  color: #fff;
+}
+
+.secondary {
+  background: #fff;
+}
+
+.linkish {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.textish {
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  padding: 0.2rem 0;
+  min-height: auto;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.choices {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.choice {
+  text-align: left;
+  padding: 0.8rem 1rem;
+  border-radius: 0.9rem;
+  background: #fff;
+}
+
+.choice:hover,
+.secondary:hover,
+.tab:hover {
+  border-color: var(--forest);
+}
+
+.facts {
+  margin: 0 0 0.9rem;
+  padding-left: 1.1rem;
+}
+
+.flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.chip {
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: #efe6d4;
+  font-size: 0.85rem;
+}
+
+.ticket {
+  position: relative;
+  margin: 0 0 1rem;
+  padding: 1.1rem 1rem 1rem;
+  border: 1.5px dashed var(--forest);
+  border-radius: 1rem;
+  background: linear-gradient(180deg, #f4faf6, #fff);
+}
+
+.stamp {
+  margin: 0 0 0.55rem;
+  color: var(--forest);
+  font-size: 0.95rem;
+}
+
+.ticket ol {
+  margin: 0 0 0.8rem;
+  padding-left: 1.15rem;
+}
+
+.ticket a {
+  color: var(--forest-deep);
+}
+
+.notice {
+  padding: 0.7rem 0.8rem;
+  border-radius: 0.75rem;
+  background: var(--amber-bg);
+  color: #6a3f08;
+}
+
+.notice.ok {
+  background: #dcece4;
+  color: var(--ok);
+}
+
+.error {
+  margin: 0;
+  color: var(--crimson);
+}
+
+.steps {
+  margin: 0.4rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.steps li {
+  padding: 0.7rem 0.8rem;
+  border-radius: 0.8rem;
+  background: #f3ece0;
+  color: var(--muted);
+}
+
+.steps li.now {
+  background: var(--amber-bg);
+  color: var(--ink);
+}
+
+.steps li.done {
+  background: #dcece4;
+  color: var(--ok);
+}
+
+.summary {
+  white-space: pre-wrap;
+  font-size: 0.92rem;
+  background: #f7f1e6;
+}
+
+.foot {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem 1rem;
+  align-items: center;
+  margin-top: 1.2rem;
+  padding: 0.75rem 0 0.4rem;
+  background: linear-gradient(180deg, transparent, var(--bg) 30%);
+}
+
+.state-drawer {
+  margin-top: 0.4rem;
+  overflow: auto;
+  max-height: 18rem;
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  background: #1b1712;
+  color: #f6efe3;
+}
+
+.state-drawer pre {
+  margin: 0;
+  padding: 0.85rem;
+  font-size: 0.75rem;
+}
+
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+@media (max-width: 640px) {
+  .app {
+    padding-left: 0.9rem;
+    padding-right: 0.9rem;
+  }
+
+  .row .primary,
+  .row .secondary {
+    flex: 1 1 12rem;
+  }
+}
