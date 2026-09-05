@@ -1,3 +1,4 @@
+import { redactSensitive } from "./evidence";
 import { actionFor } from "./sources";
 import type {
   AssessInput,
@@ -28,34 +29,10 @@ const CLICKED = /\b(i (?:clicked|opened|tapped)|already clicked)\b/i;
 const INSTALLED = /\b(i installed|already installed|they can see (?:my )?screen)\b/i;
 const OTP_DONE = /\b(i (?:typed|entered|gave|shared) (?:the )?(?:otp|code)|told them the (?:otp|code))\b/i;
 
+export { redactSensitive };
+
 export function newThreadId(): string {
   return `inc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-export function redactSensitive(text: string): { text: string; notice: string | null } {
-  let next = text;
-  let notice: string | null = null;
-
-  if (/\b(?:\d[ \-]*?){13,19}\b/.test(next)) {
-    next = next.replace(/\b(?:\d[ \-]*?){13,19}\b/g, "[redacted card number]");
-    notice = "A long number that looked like a card was removed. We never store card numbers.";
-  }
-
-  if (/\b(otp|one[ -]?time|sms code|verification code)\b/i.test(next) && /\b\d{6}\b/.test(next)) {
-    next = next.replace(/\b\d{6}\b/g, "[redacted code]");
-    notice = notice
-      ? `${notice} A 6-digit code was also removed.`
-      : "A 6-digit code was removed. We never store OTPs.";
-  }
-
-  if (/\bpassword\s*[:=]\s*\S+/i.test(next)) {
-    next = next.replace(/\bpassword\s*[:=]\s*\S+/gi, "password: [redacted]");
-    notice = notice
-      ? `${notice} A password was also removed.`
-      : "A password was removed. We never store passwords.";
-  }
-
-  return { text: next, notice };
 }
 
 function unique<T>(items: T[]): T[] {
@@ -215,8 +192,12 @@ export function assess(input: AssessInput): IncidentState {
   const prior = input.prior;
   const thread_id = prior?.thread_id ?? newThreadId();
   const refs = [...(prior?.raw_evidence_refs ?? [])];
-  if (input.fileName) refs.push(`screenshot:${input.fileName}`);
-  if (text.trim()) refs.push(`${input.mode}:${text.trim().slice(0, 80)}`);
+  if (input.evidenceRefs?.length) {
+    refs.push(...input.evidenceRefs);
+  } else {
+    if (input.fileName) refs.push(`screenshot:${input.fileName}`);
+    if (text.trim()) refs.push(`${input.mode}:${text.trim().slice(0, 80)}`);
+  }
 
   let haystack = [text, input.fileName ?? "", applyAnswer("", input.answer)].join("\n");
   if (prior) {

@@ -81,6 +81,16 @@ export interface AssessInput {
   text: string;
   mode: IntakeMode;
   fileName?: string;
+  evidenceRefs?: string[];
   prior?: IncidentState;
   answer?: { question: string; value: string };
+}
+
+export interface EvidencePacket {
+  text: string;
+  evidence_refs: string[];
+  redaction_notice: string | null;
+  ocr_status: "none" | "ok" | "weak" | "failed";
+  ocr_excerpt: string | null;
+  needs_caption: boolean;
 }

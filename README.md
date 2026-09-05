@@ -168,6 +168,8 @@ npm run dev
 
 Open `http://localhost:5173`. Use **Use a sample** to walk the bank-impersonation path, answer the one question, confirm the next-action card, then **Something changed** to re-assess the same `thread_id`.
 
+Person 2 (evidence and safety) runs before extract: secrets are redacted, screenshots stay as file references, and text is read from the image on-device with Tesseract. If reading fails, the user must type what the screenshot says. Person 3 only receives cleaned text plus `raw_evidence_refs`.
+
 This is not the AgentCore runtime. The workshop deployment seam is still a local HTTP service on port `8080` with a `POST /invocations` route. When that exists, the README should document the exact command, required AWS region/model access, environment variables, and a sample request.
 
 Before submission, complete this checklist:

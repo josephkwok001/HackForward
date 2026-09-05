@@ -1,19 +1,22 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type RefObject } from "react";
 import { assess, handoffSummary, promptForQuestion, withConsent } from "./engine";
+import { prepareEvidence } from "./evidence";
 import { FLAG_LABEL, SAMPLE_MESSAGE, STAGE_LABEL } from "./sources";
-import type { IncidentState, IntakeMode } from "./types";
+import type { EvidencePacket, IncidentState, IntakeMode } from "./types";
 
-type View = "intake" | "working" | "clarify" | "result" | "handoff";
+type View = "intake" | "preparing" | "working" | "clarify" | "result" | "handoff";
 
+const PREPARE_STEPS = ["Read screenshot", "Remove secrets"];
 const WORK_STEPS = ["Extract facts", "Assess stage and risk", "Safety gate"];
 
 export default function App() {
   const [view, setView] = useState<View>("intake");
   const [mode, setMode] = useState<IntakeMode>("message");
   const [text, setText] = useState("");
-  const [fileName, setFileName] = useState<string | undefined>();
+  const [file, setFile] = useState<File | undefined>();
   const [previewUrl, setPreviewUrl] = useState<string | undefined>();
   const [error, setError] = useState<string | null>(null);
+  const [packet, setPacket] = useState<EvidencePacket | null>(null);
   const [state, setState] = useState<IncidentState | null>(null);
   const [showState, setShowState] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -28,6 +31,11 @@ export default function App() {
   }, [previewUrl]);
 
   useEffect(() => {
+    if (view === "preparing") {
+      setWorkTick(0);
+      const timers = [0, 1].map((i) => window.setTimeout(() => setWorkTick(i + 1), 240 + i * 280));
+      return () => timers.forEach(clearTimeout);
+    }
     if (view !== "working") return;
     setWorkTick(0);
     const timers = [0, 1, 2].map((i) =>
@@ -59,17 +67,27 @@ export default function App() {
 
   function resetIntakeFields() {
     setText("");
-    setFileName(undefined);
+    setFile(undefined);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(undefined);
     if (fileRef.current) fileRef.current.value = "";
   }
 
-  function runAssess(next: { text: string; mode: IntakeMode; fileName?: string; answer?: { question: string; value: string } }, prior?: IncidentState | null) {
+  function runAssess(
+    next: {
+      text: string;
+      mode: IntakeMode;
+      fileName?: string;
+      evidenceRefs?: string[];
+      answer?: { question: string; value: string };
+    },
+    prior?: IncidentState | null,
+  ) {
     const assessed = assess({
       text: next.text,
       mode: next.mode,
       fileName: next.fileName,
+      evidenceRefs: next.evidenceRefs,
       prior: prior ?? undefined,
       answer: next.answer,
     });
@@ -78,14 +96,36 @@ export default function App() {
     setView("working");
   }
 
-  function onSubmit(event: FormEvent) {
+  async function onSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!text.trim() && !fileName) {
+    if (!text.trim() && !file) {
       setError("Paste a message, describe what happened, or attach a screenshot.");
       return;
     }
-    runAssess({ text, mode, fileName }, adding ? state : null);
-    resetIntakeFields();
+    setError(null);
+    setView("preparing");
+    try {
+      const nextPacket = await prepareEvidence({ text, file, mode: file ? "screenshot" : mode });
+      setPacket(nextPacket);
+      if (nextPacket.needs_caption) {
+        setView(adding ? "result" : "intake");
+        setError("We could not read enough text from that screenshot. Type what it says, then try again.");
+        return;
+      }
+      runAssess(
+        {
+          text: nextPacket.text,
+          mode: file ? "screenshot" : mode,
+          fileName: file?.name,
+          evidenceRefs: nextPacket.evidence_refs,
+        },
+        adding ? state : null,
+      );
+      resetIntakeFields();
+    } catch (cause) {
+      setView(adding ? "result" : "intake");
+      setError(cause instanceof Error ? cause.message : "Could not read that screenshot. Type what it says instead.");
+    }
   }
 
   function onSample() {
@@ -94,15 +134,15 @@ export default function App() {
     setError(null);
   }
 
-  function onFile(file: File | undefined) {
+  function onFile(next: File | undefined) {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
-    if (!file) {
-      setFileName(undefined);
+    if (!next) {
+      setFile(undefined);
       setPreviewUrl(undefined);
       return;
     }
-    setFileName(file.name);
-    setPreviewUrl(URL.createObjectURL(file));
+    setFile(next);
+    setPreviewUrl(URL.createObjectURL(next));
     setMode("screenshot");
   }
 
@@ -124,6 +164,7 @@ export default function App() {
     setAdding(false);
     setShowState(false);
     setCopied(false);
+    setPacket(null);
     resetIntakeFields();
     setError(null);
   }
@@ -161,7 +202,7 @@ export default function App() {
             mode={mode}
             text={text}
             error={error}
-            fileName={fileName}
+            fileName={file?.name}
             previewUrl={previewUrl}
             fileRef={fileRef}
             onMode={setMode}
@@ -172,7 +213,15 @@ export default function App() {
           />
         )}
 
-        {view === "working" && <Working tick={workTick} />}
+        {view === "preparing" && (
+          <Working
+            tick={workTick}
+            title="Checking what you shared"
+            steps={file ? PREPARE_STEPS : ["Remove secrets"]}
+          />
+        )}
+
+        {view === "working" && <Working tick={workTick} title="Reading what you shared" steps={WORK_STEPS} />}
 
         {view === "clarify" && state && prompt && (
           <section className="panel">
@@ -209,6 +258,7 @@ export default function App() {
               setState(withConsent(state, "prepare_handoff"));
               setView("handoff");
             }}
+            packet={packet}
           />
         )}
 
@@ -243,7 +293,7 @@ export default function App() {
             Start over
           </button>
         )}
-        <span className="muted">Baseline UI · rule-based stand-in for the graph</span>
+        <span className="muted">Baseline UI · screenshots are read on this device</span>
       </footer>
 
       {showState && state && (
@@ -304,7 +354,7 @@ function Intake(props: {
               ? "Paste the SMS, WhatsApp, or email text here."
               : props.mode === "describe"
                 ? "Example: A caller said they were from the bank and told me not to hang up."
-                : "Optional: add a short note about what the screenshot shows."
+                : "Optional note. We also try to read text from the screenshot on your device."
           }
         />
         {props.mode === "screenshot" && (
@@ -318,6 +368,9 @@ function Intake(props: {
             {props.previewUrl && (
               <img className="thumb" src={props.previewUrl} alt="Attached screenshot preview" />
             )}
+            <p className="muted">
+              The image stays on this device as a file reference. If reading fails, type what it says.
+            </p>
           </div>
         )}
         {props.error && <p className="error">{props.error}</p>}
@@ -334,13 +387,13 @@ function Intake(props: {
   );
 }
 
-function Working({ tick }: { tick: number }) {
+function Working({ tick, title, steps }: { tick: number; title: string; steps: string[] }) {
   return (
     <section className="panel working" aria-live="polite">
       <p className="eyebrow">Working</p>
-      <h1>Reading what you shared</h1>
+      <h1>{title}</h1>
       <ol className="steps">
-        {WORK_STEPS.map((step, index) => (
+        {steps.map((step, index) => (
           <li key={step} className={tick > index ? "done" : tick === index ? "now" : ""}>
             {step}
           </li>
@@ -363,6 +416,7 @@ function Result(props: {
   onAdd: () => void;
   onConfirm: () => void;
   onHandoff: () => void;
+  packet: EvidencePacket | null;
 }) {
   const action = props.state.selected_next_action;
   const confirmed = props.state.user_consent.includes("next_action");
@@ -375,6 +429,14 @@ function Result(props: {
       </p>
       <h1>{action?.title ?? "We need one more fact before advising."}</h1>
       {props.state.redaction_notice && <p className="notice">{props.state.redaction_notice}</p>}
+      {props.packet?.ocr_excerpt && (
+        <p className="notice ok">
+          {props.packet.ocr_status === "weak"
+            ? "We only partly read the screenshot. Secrets were removed: "
+            : "Read from the screenshot. Secrets were removed: "}
+          {props.packet.ocr_excerpt}
+        </p>
+      )}
 
       {props.state.facts_shared.length > 0 && (
         <ul className="facts">

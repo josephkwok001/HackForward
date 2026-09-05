@@ -200,6 +200,10 @@ textarea:focus {
   gap: 0.7rem;
 }
 
+.upload .muted {
+  font-size: 0.88rem;
+}
+
 .thumb {
   width: min(100%, 16rem);
   border-radius: 0.75rem;
