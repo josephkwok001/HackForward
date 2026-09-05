@@ -158,7 +158,9 @@ Track schema-validation pass rate, stage/risk accuracy, risk recall for urgent c
 
 ### Baseline UI
 
-The current UI is frontend-only. It keeps incident state in the browser and uses keyword rules, not Bedrock.
+The current UI uses keyword rules, not Bedrock. The Vite development server also
+exposes the intake-only `POST /intake` seam; records are kept in memory until the
+server restarts.
 
 ```bash
 cd web
@@ -167,6 +169,18 @@ npm run dev
 ```
 
 Open `http://localhost:5173`. Use **Use a sample** to walk the bank-impersonation path, answer the one question, confirm the next-action card, then **Something changed** to re-assess the same `thread_id`.
+
+Create an intake record with JSON containing at least `text` or `evidence_ref`:
+
+```bash
+curl -X POST http://localhost:5173/intake \
+  -H 'Content-Type: application/json' \
+  -d '{"mode":"message","text":"OCBC asked me to transfer money."}'
+```
+
+To add evidence, send the returned `thread_id` in the next request. The response is
+the locked intake-only `IncidentRecord`; it contains no assessment, routing, or
+next-action fields.
 
 This is not the AgentCore runtime. The workshop deployment seam is still a local HTTP service on port `8080` with a `POST /invocations` route. When that exists, the README should document the exact command, required AWS region/model access, environment variables, and a sample request.
 
