@@ -88,6 +88,58 @@ class AssessLLMOutput(BaseModel):
         return value[:3]
 
 
+EscalationRoute = Literal[
+    "none",
+    "bank",
+    "scamshield_or_1799",
+    "police",
+    "trusted_contact",
+]
+
+
+class OfficialSource(BaseModel):
+    id: str
+    title: str
+    url: str
+    excerpt: str = ""
+
+
+class NextAction(BaseModel):
+    title: str
+    steps: list[str] = Field(default_factory=list)
+    source_title: str
+    source_url: str
+
+    @field_validator("steps")
+    @classmethod
+    def one_to_three_steps(cls, value: list[str]) -> list[str]:
+        return value[:3]
+
+
+class ActionInput(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    thread_id: str
+    current_stage: Stage
+    risk_flags: list[RiskFlag] = Field(default_factory=list)
+
+
+class ActionResult(BaseModel):
+    thread_id: str
+    current_stage: Stage
+    selected_next_action: NextAction
+    escalation_route: EscalationRoute
+    official_sources: list[OfficialSource] = Field(default_factory=list)
+    decision_factors: list[str] = Field(default_factory=list)
+    retrieval_failed: bool = False
+    source: Literal["playbook"] = "playbook"
+
+    @field_validator("decision_factors")
+    @classmethod
+    def at_most_three_factors(cls, value: list[str]) -> list[str]:
+        return value[:3]
+
+
 class AssessResult(BaseModel):
     thread_id: str
     current_stage: Stage
