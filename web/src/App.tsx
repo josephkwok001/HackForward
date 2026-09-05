@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type FormEvent, type RefObject } from "react";
 import { fetchAssess, seedFromRules, toAssessRequest } from "./assessApi";
 import { assess } from "./engine";
 import { prepareEvidence } from "./evidence";
-import { FLAG_LABEL, SAMPLE_MESSAGE, STAGE_LABEL } from "./sources";
+import { FLAG_BLURB, FLAG_LABEL, INCIDENT_LABEL, SAMPLE_MESSAGE, STAGE_BLURB, STAGE_LABEL } from "./sources";
 import type { EvidencePacket, IncidentState, IntakeMode, StageAssessResult } from "./types";
 
 type View = "intake" | "preparing" | "working" | "record";
@@ -18,7 +18,12 @@ type IntakeRecord = Pick<
 >;
 
 const PREPARE_STEPS = ["Read screenshot", "Remove secrets"];
-const WORK_STEPS = ["Secure the evidence", "Extract observed facts", "Create incident record"];
+const WORK_STEPS = [
+  "Secure the evidence",
+  "Extract observed facts",
+  "Assess stage on Amazon Bedrock",
+  "Create incident record",
+];
 
 function toRecord(state: IncidentState): IntakeRecord {
   return {
@@ -60,15 +65,8 @@ export default function App() {
     }
     if (view !== "working") return;
     setWorkTick(0);
-    const timers = [0, 1, 2].map((i) => window.setTimeout(() => setWorkTick(i + 1), 600 + i * 550));
-    const done = window.setTimeout(() => {
-      setView("record");
-      setAdding(false);
-    }, 2500);
-    return () => {
-      timers.forEach(clearTimeout);
-      clearTimeout(done);
-    };
+    const timers = [0, 1, 2, 3].map((i) => window.setTimeout(() => setWorkTick(i + 1), 500 + i * 450));
+    return () => timers.forEach(clearTimeout);
   }, [view]);
 
   function resetIntakeFields() {
@@ -106,13 +104,16 @@ export default function App() {
       setAssessment(seedFromRules(assessed));
       resetIntakeFields();
       setView("working");
-      void fetchAssess(toAssessRequest(assessed))
-        .then((result) => {
-          setAssessment(result);
-        })
-        .catch(() => {
-          /* Keep the keyword seed so the record page never goes blank. */
-        });
+      const started = Date.now();
+      try {
+        setAssessment(await fetchAssess(toAssessRequest(assessed)));
+      } catch {
+        /* Keep the keyword seed so the record page never goes blank. */
+      }
+      const wait = Math.max(0, 1800 - (Date.now() - started));
+      if (wait) await new Promise((resolve) => window.setTimeout(resolve, wait));
+      setAdding(false);
+      setView("record");
     } catch (cause) {
       setView("intake");
       setError(cause instanceof Error ? cause.message : "Could not read that screenshot. Type what it says instead.");
@@ -314,7 +315,9 @@ function Working({ tick, title, steps }: { tick: number; title: string; steps: s
       <div className="loader" aria-hidden="true"><span /></div>
       <p className="eyebrow">Processing intake</p>
       <h1>{title}</h1>
-      <p className="working-copy">Keeping the evidence organized and extracting only what was observed.</p>
+      <p className="working-copy">
+        Extracting what was observed, then classifying stage and risk on Amazon Bedrock.
+      </p>
       <ol className="steps">
         {steps.map((step, index) => (
           <li key={step} className={tick > index ? "done" : tick === index ? "now" : ""}>
@@ -325,6 +328,14 @@ function Working({ tick, title, steps }: { tick: number; title: string; steps: s
         ))}
       </ol>
     </section>
+  );
+}
+
+function fullObservation(record: IntakeRecord): string | null {
+  return (
+    record.events_and_timeline.find(
+      (event) => event.observation && !event.observation.startsWith("Provided a screenshot"),
+    )?.observation ?? null
   );
 }
 
@@ -341,14 +352,18 @@ function RecordView({
   onAdd: () => void;
   onStartOver: () => void;
 }) {
+  const [showQuote, setShowQuote] = useState(false);
+  const quote = fullObservation(record);
+  const quoteLong = Boolean(quote && quote.length > 160);
+  const quoteText = quote && quoteLong && !showQuote ? `${quote.slice(0, 157)}…` : quote;
+  const flags = assessment.risk_flags.filter((flag) => flag !== "insufficient_evidence");
+  const notes = [...new Set([...record.uncertainty_notes, ...assessment.uncertainty_notes])].filter(
+    (note) => assessment.source !== "bedrock" || !/model skipped/i.test(note),
+  );
   return (
     <section className="panel">
       <p className="eyebrow">Record created</p>
       <h1>Here is what we captured</h1>
-      <div className="record-id">
-        <span>Thread ID</span>
-        <code>{record.thread_id}</code>
-      </div>
       {record.redaction_notice && <p className="notice">{record.redaction_notice}</p>}
       {packet?.ocr_excerpt && (
         <p className="notice ok">
@@ -358,13 +373,56 @@ function RecordView({
           {packet.ocr_excerpt}
         </p>
       )}
-      <RecordSection title="Incident type">
-        <p>{record.incident_type}</p>
-      </RecordSection>
-      <RecordSection title="Facts">
+      <article className="assess-card">
+        <div className="assess-head">
+          <p className="eyebrow">AI assessment</p>
+          <span className={assessment.source === "bedrock" ? "badge on" : "badge"}>
+            {assessment.source === "bedrock" ? "Amazon Bedrock" : "Keyword fallback"}
+          </span>
+        </div>
+        <p className="assess-kicker">Stage</p>
+        <p className="assess-stage">{STAGE_LABEL[assessment.current_stage]}</p>
+        <p className="assess-blurb">{STAGE_BLURB[assessment.current_stage]}</p>
+        <p className="assess-kicker">Risk flags</p>
+        {flags.length ? (
+          <ul className="risk-list">
+            {flags.map((flag) => (
+              <li key={flag}>
+                <strong>{FLAG_LABEL[flag]}</strong>
+                <span>{FLAG_BLURB[flag]}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted">No urgent risk flags.</p>
+        )}
+        {assessment.decision_factors.length > 0 && (
+          <details className="fold">
+            <summary>Why the model chose this</summary>
+            <ListOrEmpty items={assessment.decision_factors} />
+          </details>
+        )}
+      </article>
+      {assessment.needs_clarification && assessment.unanswered_questions[0] && (
+        <p className="notice">{assessment.unanswered_questions[0]} Use Add more evidence if you can answer this.</p>
+      )}
+      <details className="fold" open>
+        <summary>What we observed</summary>
+        <p className="incident-line">{INCIDENT_LABEL[record.incident_type] ?? record.incident_type}</p>
+        {quoteText && (
+          <div className="fact-summary">
+            <p>{quoteText}</p>
+            {quoteLong && (
+              <button type="button" className="textish" onClick={() => setShowQuote((open) => !open)}>
+                {showQuote ? "Show less" : "Show more"}
+              </button>
+            )}
+          </div>
+        )}
         <ListOrEmpty items={record.facts_shared} empty="No clear facts extracted yet." />
-      </RecordSection>
-      <RecordSection title="Timeline">
+      </details>
+      <details className="fold">
+        <summary>Timeline</summary>
         <ul className="timeline">
           {record.events_and_timeline.map((event, index) => (
             <li key={`${event.time_hint}-${index}`}>
@@ -373,38 +431,24 @@ function RecordView({
             </li>
           ))}
         </ul>
-      </RecordSection>
-      <RecordSection title="Stage">
-        <p>{STAGE_LABEL[assessment.current_stage]}</p>
-      </RecordSection>
-      <RecordSection title="Risk">
-        {assessment.risk_flags.length ? (
-          <ul className="chips">
-            {assessment.risk_flags.map((flag) => (
-              <li key={flag}>{FLAG_LABEL[flag]}</li>
-            ))}
-          </ul>
-        ) : (
-          <p className="muted">No urgent risk flags.</p>
-        )}
-      </RecordSection>
-      <RecordSection title="Why">
-        <ListOrEmpty items={assessment.decision_factors} empty="No decision notes yet." />
-      </RecordSection>
-      {assessment.needs_clarification && assessment.unanswered_questions[0] && (
-        <RecordSection title="One question">
-          <p>{assessment.unanswered_questions[0]}</p>
-          <p className="muted">Use Add more evidence if you can answer this.</p>
-        </RecordSection>
+      </details>
+      {notes.length > 0 && (
+        <details className="fold">
+          <summary>Uncertainty</summary>
+          <ListOrEmpty items={notes} />
+        </details>
       )}
-      {[...record.uncertainty_notes, ...assessment.uncertainty_notes].length > 0 && (
-        <RecordSection title="Uncertainty">
-          <ListOrEmpty items={[...new Set([...record.uncertainty_notes, ...assessment.uncertainty_notes])]} />
-        </RecordSection>
-      )}
-      <RecordSection title="Evidence references">
-        <ListOrEmpty items={record.raw_evidence_refs} />
-      </RecordSection>
+      <details className="fold">
+        <summary>Case details</summary>
+        <p className="muted">
+          The case ID keeps this incident together when you add more evidence. It is not sent to anyone.
+        </p>
+        <p className="case-id">
+          <span>Case ID</span>
+          <code>{record.thread_id}</code>
+        </p>
+        <ListOrEmpty items={record.raw_evidence_refs} empty="No file references." />
+      </details>
       <div className="row">
         <button type="button" className="primary" onClick={onAdd}>
           Add more evidence
@@ -414,15 +458,6 @@ function RecordView({
         </button>
       </div>
     </section>
-  );
-}
-
-function RecordSection({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <article className="record-section">
-      <h2>{title}</h2>
-      {children}
-    </article>
   );
 }
 

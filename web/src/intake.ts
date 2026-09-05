@@ -70,16 +70,16 @@ export function validateIntakeRequest(value: unknown): string | null {
 
 function extractedFacts(text: string, evidenceRef?: string): string[] {
   const facts: string[] = [];
-  if (BANK.test(text)) facts.push("Someone mentioned or claimed to represent a bank.");
-  else if (OFFICIAL.test(text)) facts.push("Someone claimed to represent an official organisation.");
-  if (TRANSFER.test(text)) facts.push("They asked about a transfer, PayNow, or moving money.");
-  if (PRESSURE.test(text)) facts.push("The message used urgency or discouraged outside contact.");
-  if (OTP.test(text)) facts.push("They mentioned an OTP or verification code.");
-  if (REMOTE.test(text)) facts.push("They mentioned remote access or screen sharing.");
-  if (LINK.test(text)) facts.push("The contact included a link.");
-  if (SENT.test(text)) facts.push("The user indicated money may already have been sent.");
-  if (PENDING.test(text)) facts.push("The user indicated a transfer may be in progress.");
-  if (evidenceRef) facts.push("A screenshot or file reference was provided.");
+  if (BANK.test(text)) facts.push("Named or impersonated a bank (for example a fraud desk).");
+  else if (OFFICIAL.test(text)) facts.push("Claimed to be an official organisation or agency.");
+  if (TRANSFER.test(text)) facts.push("Asked you to transfer money or use PayNow.");
+  if (PRESSURE.test(text)) facts.push("Pressed you to stay on the line or not tell anyone.");
+  if (OTP.test(text)) facts.push("Asked about an OTP or verification code.");
+  if (REMOTE.test(text)) facts.push("Asked for remote access or screen sharing.");
+  if (LINK.test(text)) facts.push("Sent a link to open.");
+  if (SENT.test(text)) facts.push("You may already have sent money.");
+  if (PENDING.test(text)) facts.push("A transfer may be in progress.");
+  if (evidenceRef) facts.push("A screenshot was attached.");
   return facts;
 }
 
