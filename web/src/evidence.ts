@@ -19,7 +19,7 @@ export function redactSensitive(text: string): { text: string; notice: string | 
     notices.push("A long number that looked like a card was removed. We never store card numbers.");
   }
 
-  if (/\b(otp|one[ -]?time|sms code|verification code)\b/i.test(next) && /\b\d{6}\b/.test(next)) {
+  if (/\b(otp|one[ -]?time|sms code|verification code|code)\b/i.test(next) && /\b\d{6}\b/.test(next)) {
     next = next.replace(/\b\d{6}\b/g, "[redacted code]");
     notices.push("A 6-digit code was removed. We never store OTPs.");
   }

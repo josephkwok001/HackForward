@@ -146,6 +146,57 @@ a {
   color: var(--muted);
 }
 
+.helper {
+  margin: -0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.record-id {
+  display: grid;
+  gap: 0.25rem;
+  margin: 1rem 0;
+  padding: 0.8rem;
+  border-radius: 0.8rem;
+  background: #f4eddf;
+}
+
+.record-id span,
+.record-section h2 {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.record-id code {
+  overflow-wrap: anywhere;
+}
+
+.record-section {
+  margin-top: 1.2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.record-section h2 {
+  margin: 0 0 0.55rem;
+  color: var(--muted);
+}
+
+.record-section p { margin: 0; }
+
+.timeline {
+  display: grid;
+  gap: 0.7rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.timeline li { display: grid; gap: 0.1rem; }
+.timeline strong { color: var(--forest); font-size: 0.85rem; }
+
 form,
 .add-more {
   display: grid;
