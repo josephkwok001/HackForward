@@ -224,7 +224,22 @@ python eval_assess.py
 python -m unittest test_assess.py
 ```
 
-This is not the AgentCore runtime. Feature 2 is local `8080` first. The workshop deployment seam remains `POST /invocations` on that port.
+### Feature 3: next-action card
+
+After stage and risk exist, **Plan next steps** on the record page calls `POST /action`. That runs `retrieve → action_card` and returns an official playbook (1–3 steps plus a ScamShield / 1799 / SPF link). The app never places a call. If the graph is down, the same card is filled from the local `actionFor()` table.
+
+```bash
+curl -X POST http://127.0.0.1:8080/action \
+  -H 'Content-Type: application/json' \
+  -d '{"thread_id":"demo","current_stage":"active_pressure","risk_flags":["requested_transfer"]}'
+```
+
+```bash
+cd graph
+python -m unittest test_action.py
+```
+
+This is not the AgentCore runtime. Feature 2 and 3 are local `8080` first. The workshop deployment seam remains `POST /invocations` on that port.
 
 Before submission, complete this checklist:
 

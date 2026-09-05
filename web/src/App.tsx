@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from "react";
+import { fetchAction, seedAction, toActionRequest } from "./actionApi";
 import { fetchAssess, seedFromRules, toAssessRequest } from "./assessApi";
 import { assess } from "./engine";
 import { prepareEvidence } from "./evidence";
 import { FLAG_BLURB, FLAG_LABEL, INCIDENT_LABEL, SAMPLE_MESSAGE, STAGE_BLURB, STAGE_LABEL } from "./sources";
-import type { EvidencePacket, IncidentState, IntakeMode, StageAssessResult } from "./types";
+import type { ActionPlanResult, EvidencePacket, IncidentState, IntakeMode, StageAssessResult } from "./types";
 
 type View = "intake" | "preparing" | "working" | "record";
 type IntakeRecord = Pick<
@@ -47,6 +48,8 @@ export default function App() {
   const [packet, setPacket] = useState<EvidencePacket | null>(null);
   const [state, setState] = useState<IncidentState | null>(null);
   const [assessment, setAssessment] = useState<StageAssessResult | null>(null);
+  const [actionPlan, setActionPlan] = useState<ActionPlanResult | null>(null);
+  const [planning, setPlanning] = useState(false);
   const [adding, setAdding] = useState(false);
   const [workTick, setWorkTick] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -136,6 +139,8 @@ export default function App() {
     resetIntakeFields();
     setState(null);
     setAssessment(null);
+    setActionPlan(null);
+    setPlanning(false);
     setPacket(null);
     setAdding(false);
     setError(null);
@@ -196,7 +201,19 @@ export default function App() {
           <RecordView
             record={record}
             assessment={assessment}
+            actionPlan={actionPlan}
+            planning={planning}
             packet={packet}
+            onPlan={async () => {
+              setPlanning(true);
+              try {
+                setActionPlan(await fetchAction(toActionRequest(assessment)));
+              } catch {
+                setActionPlan(seedAction(assessment));
+              } finally {
+                setPlanning(false);
+              }
+            }}
             onAdd={() => {
               setAdding(true);
               setError(null);
@@ -342,17 +359,24 @@ function fullObservation(record: IntakeRecord): string | null {
 function RecordView({
   record,
   assessment,
+  actionPlan,
+  planning,
   packet,
+  onPlan,
   onAdd,
   onStartOver,
 }: {
   record: IntakeRecord;
   assessment: StageAssessResult;
+  actionPlan: ActionPlanResult | null;
+  planning: boolean;
   packet: EvidencePacket | null;
+  onPlan: () => void;
   onAdd: () => void;
   onStartOver: () => void;
 }) {
   const [showQuote, setShowQuote] = useState(false);
+  const [understood, setUnderstood] = useState(false);
   const quote = fullObservation(record);
   const quoteLong = Boolean(quote && quote.length > 160);
   const quoteText = quote && quoteLong && !showQuote ? `${quote.slice(0, 157)}…` : quote;
@@ -449,8 +473,40 @@ function RecordView({
         </p>
         <ListOrEmpty items={record.raw_evidence_refs} empty="No file references." />
       </details>
+      {actionPlan && (
+        <article className="action-card">
+          <div className="assess-head">
+            <p className="eyebrow">Next steps</p>
+            <span className="badge on">Official playbook</span>
+          </div>
+          <p className="assess-stage">{actionPlan.selected_next_action.title}</p>
+          <p className="muted">This app does not call anyone. These are steps for you to take.</p>
+          <ol className="plan-steps">
+            {actionPlan.selected_next_action.steps.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+          <p className="source-line">
+            Source:{" "}
+            <a href={actionPlan.selected_next_action.source_url} target="_blank" rel="noreferrer">
+              {actionPlan.selected_next_action.source_title}
+            </a>
+          </p>
+          <label className="consent">
+            <input
+              type="checkbox"
+              checked={understood}
+              onChange={(event) => setUnderstood(event.target.checked)}
+            />
+            I understand these steps. ScamSafe will not contact a bank, 1799, or the police for me.
+          </label>
+        </article>
+      )}
       <div className="row">
-        <button type="button" className="primary" onClick={onAdd}>
+        <button type="button" className="primary" onClick={onPlan} disabled={planning}>
+          {planning ? "Planning next steps…" : "Plan next steps"}
+        </button>
+        <button type="button" className="secondary" onClick={onAdd}>
           Add more evidence
         </button>
         <button type="button" className="secondary" onClick={onStartOver}>

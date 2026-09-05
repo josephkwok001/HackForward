@@ -5,8 +5,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from nodes.assess import bedrock_configured
-from state import AssessInput, AssessResult
-from workflow import invoke_assess
+from state import ActionInput, ActionResult, AssessInput, AssessResult
+from workflow import invoke_action, invoke_assess
 
 app = FastAPI(title="ScamSafe assess", version="0.1.0")
 app.add_middleware(
@@ -23,6 +23,7 @@ def root() -> dict[str, str]:
         "service": "ScamSafe assess",
         "health": "/health",
         "assess": "POST /assess",
+        "action": "POST /action",
     }
 
 
@@ -39,6 +40,11 @@ def health() -> dict[str, str]:
 @app.post("/assess", response_model=AssessResult)
 def assess(record: AssessInput) -> AssessResult:
     return invoke_assess(record)
+
+
+@app.post("/action", response_model=ActionResult)
+def action(request: ActionInput) -> ActionResult:
+    return invoke_action(request)
 
 
 @app.post("/invocations", response_model=AssessResult)

@@ -111,6 +111,23 @@ export interface StageAssessRequest {
   loop_count?: number;
 }
 
+export interface ActionPlanRequest {
+  thread_id: string;
+  current_stage: Stage;
+  risk_flags: RiskFlag[];
+}
+
+export interface ActionPlanResult {
+  thread_id: string;
+  current_stage: Stage;
+  selected_next_action: NextAction;
+  escalation_route: EscalationRoute;
+  official_sources: OfficialSource[];
+  decision_factors: string[];
+  retrieval_failed: boolean;
+  source: "playbook";
+}
+
 export interface StageAssessResult {
   thread_id: string;
   current_stage: Stage;
