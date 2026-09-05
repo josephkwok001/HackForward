@@ -136,6 +136,14 @@ export function actionFor(
   };
 }
 
+export const INCIDENT_LABEL: Record<string, string> = {
+  bank_impersonation: "Bank impersonation",
+  remote_access: "Remote-access request",
+  payment_request: "Payment request",
+  impersonation: "Official impersonation",
+  unknown: "Still unclear",
+};
+
 export const STAGE_LABEL: Record<Stage, string> = {
   suspicious_contact: "Suspicious contact",
   active_pressure: "Active pressure",
@@ -148,6 +156,18 @@ export const STAGE_LABEL: Record<Stage, string> = {
   unknown: "Still unclear",
 };
 
+export const STAGE_BLURB: Record<Stage, string> = {
+  suspicious_contact: "Someone reached out and may be impersonating an official. No money or codes have been handed over yet.",
+  active_pressure: "They are pushing you to act now — stay on the line, transfer, or keep the contact going.",
+  link_clicked: "A link was opened. Do not type passwords, OTPs, or card numbers on that page.",
+  app_installed: "A remote-access or screen-sharing app may be on the device.",
+  otp_shared: "An OTP or SMS code may already have been typed or read out.",
+  payment_pending: "A transfer may have been started and can still be stopped.",
+  money_sent: "Money may already have left the account. Use official bank and police channels only.",
+  repeat_recovery: "Someone is offering to recover money. Treat that as unverified.",
+  unknown: "There is not enough yet to place this on the stage scale.",
+};
+
 export const FLAG_LABEL: Record<import("./types").RiskFlag, string> = {
   requested_transfer: "Asked for a transfer",
   requested_otp: "Asked for an OTP",
@@ -157,6 +177,17 @@ export const FLAG_LABEL: Record<import("./types").RiskFlag, string> = {
   funds_already_moved: "Funds may already have moved",
   user_still_on_the_call: "Still in the conversation",
   insufficient_evidence: "Need one more fact",
+};
+
+export const FLAG_BLURB: Record<import("./types").RiskFlag, string> = {
+  requested_transfer: "They wanted PayNow, a bank transfer, or money moved to another account.",
+  requested_otp: "They asked for a one-time password or SMS code.",
+  requested_remote_access: "They asked to install an app or see the screen.",
+  impersonating_official: "They used a bank, agency, or government name.",
+  payment_in_progress: "A transfer may have been started but not finished.",
+  funds_already_moved: "Money may already have left the account.",
+  user_still_on_the_call: "The conversation may still be live.",
+  insufficient_evidence: "One extra answer would change the next step.",
 };
 
 export const SAMPLE_MESSAGE = `OCBC Fraud Department: We detected illegal transactions on your account. To protect your funds, transfer the remaining balance to this safe account via PayNow 9123 4567. Stay on the line and do not inform anyone. Reply YES to confirm.`;
