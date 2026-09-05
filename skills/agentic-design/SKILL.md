@@ -9,7 +9,8 @@ description: Decide when this project needs generative AI, an AI agent, or a lar
 
 Use it when adding a capability, deciding whether it is genuinely agentic, choosing a planning style, composing tools, introducing memory, or considering DeepAgents/sub-agents.
 
-## The three levels
+## The three levels 
+
 
 | Level | Flow | Meaning |
 |---|---|---|
