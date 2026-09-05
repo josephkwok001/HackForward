@@ -1,3 +1,4 @@
+import { extractIncident, redactSensitive } from "./intake";
 import { actionFor } from "./sources";
 import type {
   AssessInput,
@@ -6,7 +7,6 @@ import type {
   IncidentState,
   RiskFlag,
   Stage,
-  TimelineEvent,
 } from "./types";
 
 const LOOP_LIMIT = 5;
@@ -28,35 +28,7 @@ const CLICKED = /\b(i (?:clicked|opened|tapped)|already clicked)\b/i;
 const INSTALLED = /\b(i installed|already installed|they can see (?:my )?screen)\b/i;
 const OTP_DONE = /\b(i (?:typed|entered|gave|shared) (?:the )?(?:otp|code)|told them the (?:otp|code))\b/i;
 
-export function newThreadId(): string {
-  return `inc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-export function redactSensitive(text: string): { text: string; notice: string | null } {
-  let next = text;
-  let notice: string | null = null;
-
-  if (/\b(?:\d[ \-]*?){13,19}\b/.test(next)) {
-    next = next.replace(/\b(?:\d[ \-]*?){13,19}\b/g, "[redacted card number]");
-    notice = "A long number that looked like a card was removed. We never store card numbers.";
-  }
-
-  if (/\b(otp|one[ -]?time|sms code|verification code)\b/i.test(next) && /\b\d{6}\b/.test(next)) {
-    next = next.replace(/\b\d{6}\b/g, "[redacted code]");
-    notice = notice
-      ? `${notice} A 6-digit code was also removed.`
-      : "A 6-digit code was removed. We never store OTPs.";
-  }
-
-  if (/\bpassword\s*[:=]\s*\S+/i.test(next)) {
-    next = next.replace(/\bpassword\s*[:=]\s*\S+/gi, "password: [redacted]");
-    notice = notice
-      ? `${notice} A password was also removed.`
-      : "A password was removed. We never store passwords.";
-  }
-
-  return { text: next, notice };
-}
+export { redactSensitive };
 
 function unique<T>(items: T[]): T[] {
   return [...new Set(items)];
@@ -64,10 +36,6 @@ function unique<T>(items: T[]): T[] {
 
 function pushFlag(flags: RiskFlag[], flag: RiskFlag) {
   if (!flags.includes(flag)) flags.push(flag);
-}
-
-function mergeFacts(prior: string[] | undefined, next: string[]): string[] {
-  return unique([...(prior ?? []), ...next]).slice(0, 8);
 }
 
 const STAGE_RANK: Record<Stage, number> = {
@@ -213,10 +181,31 @@ function applyAnswer(haystack: string, answer?: AssessInput["answer"]): string {
 export function assess(input: AssessInput): IncidentState {
   const { text, notice } = redactSensitive(input.text);
   const prior = input.prior;
-  const thread_id = prior?.thread_id ?? newThreadId();
-  const refs = [...(prior?.raw_evidence_refs ?? [])];
-  if (input.fileName) refs.push(`screenshot:${input.fileName}`);
-  if (text.trim()) refs.push(`${input.mode}:${text.trim().slice(0, 80)}`);
+  const answerText = applyAnswer("", input.answer).trim();
+  const screenshotRef =
+    input.evidenceRefs?.find((ref) => ref.startsWith("screenshot:")) ??
+    (input.fileName ? `screenshot:${input.fileName}` : undefined);
+  const extraction = extractIncident(
+    {
+      thread_id: prior?.thread_id,
+      mode: input.mode,
+      text: text.trim() || answerText,
+      evidence_ref: screenshotRef,
+    },
+    prior
+      ? {
+          thread_id: prior.thread_id,
+          raw_evidence_refs: prior.raw_evidence_refs,
+          events_and_timeline: prior.events_and_timeline,
+          facts_shared: prior.facts_shared,
+          incident_type: prior.incident_type,
+          uncertainty_notes: prior.uncertainty_notes,
+          redaction_notice: prior.redaction_notice,
+        }
+      : undefined,
+  );
+  const thread_id = extraction.thread_id;
+  const refs = unique([...(input.evidenceRefs ?? []), ...extraction.raw_evidence_refs]);
 
   let haystack = [text, input.fileName ?? "", applyAnswer("", input.answer)].join("\n");
   if (prior) {
@@ -237,34 +226,6 @@ export function assess(input: AssessInput): IncidentState {
   if (SENT.test(haystack)) pushFlag(flags, "funds_already_moved");
   if (PENDING.test(haystack)) pushFlag(flags, "payment_in_progress");
   if (ON_CALL.test(haystack)) pushFlag(flags, "user_still_on_the_call");
-
-  const facts: string[] = [];
-  if (OFFICIAL.test(haystack)) facts.push("Someone claimed to be a bank, agency, or other official.");
-  if (TRANSFER.test(haystack)) facts.push("They asked for a transfer or PayNow.");
-  if (PRESSURE.test(haystack)) facts.push("The message used urgency or told you not to tell anyone.");
-  if (OTP.test(haystack)) facts.push("They mentioned an OTP or verification code.");
-  if (REMOTE.test(haystack)) facts.push("They mentioned a remote-access or screen-sharing app.");
-  if (LINK.test(haystack)) facts.push("The contact included a link.");
-  if (input.fileName) facts.push(`A screenshot was attached (${input.fileName}).`);
-  if (SENT.test(haystack)) facts.push("You indicated money may already have been sent.");
-  if (PENDING.test(haystack)) facts.push("A transfer may be in progress.");
-  if (ON_CALL.test(haystack)) facts.push("You may still be on the call or chat.");
-
-  const events: TimelineEvent[] = [...(prior?.events_and_timeline ?? [])];
-  if (text.trim()) {
-    events.push({
-      time_hint: "just now",
-      actor: "user",
-      observation: text.trim().slice(0, 400),
-    });
-  }
-  if (input.answer) {
-    events.push({
-      time_hint: "just now",
-      actor: "user",
-      observation: `Answered: ${input.answer.question} → ${input.answer.value}`,
-    });
-  }
 
   let stage = preferSaferStage(classifyStage(haystack, flags), prior?.current_stage);
 
@@ -289,22 +250,14 @@ export function assess(input: AssessInput): IncidentState {
   const route = pickRoute(stage, flags);
   const { action, sources } = actionFor(stage, route);
 
-  const incident_type = flags.includes("impersonating_official")
-    ? "impersonation"
-    : flags.includes("requested_remote_access")
-      ? "remote_access"
-      : flags.includes("requested_transfer")
-        ? "payment_request"
-        : "unknown";
-
   return {
     thread_id,
-    raw_evidence_refs: unique(refs).slice(-8),
-    incident_type,
+    raw_evidence_refs: refs.slice(-8),
+    incident_type: extraction.incident_type,
     current_stage: stage,
     risk_flags: flags,
-    events_and_timeline: events.slice(-12),
-    facts_shared: mergeFacts(prior?.facts_shared, facts),
+    events_and_timeline: extraction.events_and_timeline.slice(-12),
+    facts_shared: extraction.facts_shared.slice(-8),
     unanswered_questions: clarify && !forcedStop ? [clarify.question] : [],
     candidate_next_actions: [action],
     selected_next_action: clarify && !forcedStop ? null : action,
@@ -318,7 +271,7 @@ export function assess(input: AssessInput): IncidentState {
         ? ["Loop limit reached. Showing the official fallback."]
         : [],
     needs_clarification: Boolean(clarify && !forcedStop),
-    redaction_notice: notice ?? prior?.redaction_notice ?? null,
+    redaction_notice: extraction.redaction_notice ?? notice,
   };
 }
 

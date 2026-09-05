@@ -2,6 +2,32 @@
 
 This is the shared contract between the front end, LangGraph nodes, tools, evaluation cases, and demo. Change field names here first, then update every consumer.
 
+## Locked intake contract
+
+The three UI modes feed the same intake record. This slice performs collection and
+extraction only; it does not assess, route, or select a next action.
+
+```text
+IntakeRequest
+  thread_id?          # omit on first submit; reuse when adding evidence
+  mode                # message | describe | screenshot
+  text?               # pasted transcript or description
+  evidence_ref?       # screenshot id/filename; never raw bytes in a prompt
+
+IncidentRecord
+  thread_id
+  raw_evidence_refs
+  events_and_timeline
+  facts_shared
+  incident_type       # or unknown
+  uncertainty_notes
+  redaction_notice
+```
+
+`IncidentRecord` is an intake-only subset of the full state below. Consumers must
+not add assessment, advice, action, source, escalation, or routing fields to the
+intake response.
+
 ## Required fields
 
 | Field | Purpose |

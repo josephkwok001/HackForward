@@ -28,10 +28,32 @@ export type EscalationRoute =
 
 export type IntakeMode = "message" | "describe" | "screenshot";
 
+/** Locked request contract for the intake-only API. */
+export interface IntakeRequest {
+  thread_id?: string;
+  mode: IntakeMode;
+  text?: string;
+  evidence_ref?: string;
+}
+
 export interface TimelineEvent {
   time_hint: string;
   actor: string;
   observation: string;
+}
+
+/**
+ * The intake subset of IncidentState. Extraction must not add assessment,
+ * routing, advice, or action fields to this record.
+ */
+export interface IncidentRecord {
+  thread_id: string;
+  raw_evidence_refs: string[];
+  events_and_timeline: TimelineEvent[];
+  facts_shared: string[];
+  incident_type: string;
+  uncertainty_notes: string[];
+  redaction_notice: string | null;
 }
 
 export interface NextAction {
@@ -47,14 +69,9 @@ export interface OfficialSource {
   url: string;
 }
 
-export interface IncidentState {
-  thread_id: string;
-  raw_evidence_refs: string[];
-  incident_type: string;
+export interface IncidentState extends IncidentRecord {
   current_stage: Stage;
   risk_flags: RiskFlag[];
-  events_and_timeline: TimelineEvent[];
-  facts_shared: string[];
   unanswered_questions: string[];
   candidate_next_actions: NextAction[];
   selected_next_action: NextAction | null;
@@ -62,9 +79,7 @@ export interface IncidentState {
   escalation_route: EscalationRoute;
   user_consent: string[];
   loop_count: number;
-  uncertainty_notes: string[];
   needs_clarification: boolean;
-  redaction_notice: string | null;
 }
 
 export interface ClarifyChoice {
@@ -81,6 +96,16 @@ export interface AssessInput {
   text: string;
   mode: IntakeMode;
   fileName?: string;
+  evidenceRefs?: string[];
   prior?: IncidentState;
   answer?: { question: string; value: string };
+}
+
+export interface EvidencePacket {
+  text: string;
+  evidence_refs: string[];
+  redaction_notice: string | null;
+  ocr_status: "none" | "ok" | "weak" | "failed";
+  ocr_excerpt: string | null;
+  needs_caption: boolean;
 }
