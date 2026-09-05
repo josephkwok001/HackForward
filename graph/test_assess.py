@@ -7,8 +7,8 @@ from fastapi.testclient import TestClient
 from app import app
 from fallback import haystack_from, rules_assess
 from nodes.safety_gate import apply_urgent_gate
-from state import AssessInput
-from workflow import invoke_assess
+from state import AssessInput, TimelineEvent
+from workflow import GRAPH, invoke_assess, merge_thread_memory
 
 FIXTURES = Path(__file__).parent / "fixtures" / "assess_cases.json"
 
@@ -85,6 +85,118 @@ class AssessTests(unittest.TestCase):
     def test_health(self) -> None:
         client = TestClient(app)
         self.assertEqual(client.get("/health").json()["status"], "ok")
+
+    def test_assess_input_redacts_secrets_before_graph_memory(self) -> None:
+        record = AssessInput.model_validate(
+            {
+                "thread_id": "sanitize-1",
+                "facts_shared": ["OTP 123456 was requested"],
+                "events_and_timeline": [
+                    {
+                        "time_hint": "now",
+                        "actor": "caller",
+                        "observation": "Send the OTP 654321 now",
+                    }
+                ],
+            }
+        )
+        self.assertNotIn("123456", " ".join(record.facts_shared))
+        self.assertNotIn("654321", record.events_and_timeline[0].observation)
+        self.assertIn("[redacted code]", record.facts_shared[0])
+        self.assertTrue(record.redaction_notice)
+
+    def test_follow_up_reuses_checkpointed_thread_history(self) -> None:
+        first = invoke_assess(
+            AssessInput(
+                thread_id="memory-1",
+                incident_type="bank_impersonation",
+                events_and_timeline=[
+                    TimelineEvent(
+                        time_hint="first turn",
+                        actor="user",
+                        observation="A caller claimed to be from my bank.",
+                    )
+                ],
+            )
+        )
+        follow_up = invoke_assess(
+            AssessInput(
+                thread_id="memory-1",
+                events_and_timeline=[
+                    TimelineEvent(
+                        time_hint="follow-up",
+                        actor="user",
+                        observation="They now asked me to transfer money.",
+                    )
+                ],
+            )
+        )
+        snapshot = GRAPH.get_state({"configurable": {"thread_id": "memory-1"}})
+        saved = snapshot.values["record"]
+        self.assertEqual(follow_up.thread_id, "memory-1")
+        self.assertEqual(follow_up.memory_turn_count, 2)
+        self.assertEqual(len(saved["events_and_timeline"]), 2)
+        self.assertEqual(first.memory_turn_count, 1)
+        observations = [event["observation"] for event in saved["events_and_timeline"]]
+        self.assertTrue(any("from my bank" in item for item in observations))
+        self.assertTrue(any("transfer money" in item for item in observations))
+
+    def test_memory_rejects_different_thread_ids(self) -> None:
+        first = AssessInput(thread_id="memory-a", facts_shared=["one"])
+        other = AssessInput(thread_id="memory-b", facts_shared=["two"])
+        with self.assertRaises(ValueError):
+            merge_thread_memory(first, other)
+
+    def test_memory_deduplicates_repeated_events(self) -> None:
+        event = TimelineEvent(time_hint="now", actor="user", observation="Same line twice.")
+        first = AssessInput(thread_id="memory-dedupe", events_and_timeline=[event])
+        second = AssessInput(thread_id="memory-dedupe", events_and_timeline=[event])
+        merged = merge_thread_memory(first, second)
+        self.assertEqual(len(merged.events_and_timeline), 1)
+
+    def test_memory_is_bounded_to_recent_events(self) -> None:
+        first = AssessInput(
+            thread_id="memory-limit",
+            events_and_timeline=[
+                TimelineEvent(time_hint=str(i), actor="user", observation=f"Old event {i}")
+                for i in range(40)
+            ],
+        )
+        second = AssessInput(
+            thread_id="memory-limit",
+            events_and_timeline=[TimelineEvent(time_hint="new", actor="user", observation="New event")],
+        )
+        merged = merge_thread_memory(first, second)
+        self.assertEqual(len(merged.events_and_timeline), 40)
+        self.assertEqual(merged.events_and_timeline[-1].observation, "New event")
+
+    def test_memory_endpoint_exposes_metadata_without_event_text(self) -> None:
+        client = TestClient(app)
+        client.post(
+            "/assess",
+            json={
+                "thread_id": "memory-api",
+                "events_and_timeline": [
+                    {
+                        "time_hint": "now",
+                        "actor": "user",
+                        "observation": "A caller claimed to be from my bank.",
+                    }
+                ],
+            },
+        )
+        response = client.get("/memory/memory-api")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["thread_id"], "memory-api")
+        self.assertEqual(body["memory_turn_count"], 1)
+        self.assertNotIn("observation", body)
+        dumped = json.dumps(body)
+        self.assertNotIn("claimed to be from my bank", dumped)
+
+    def test_memory_endpoint_returns_not_found_for_unknown_thread(self) -> None:
+        response = TestClient(app).get("/memory/does-not-exist")
+        self.assertEqual(response.status_code, 404)
 
 
 if __name__ == "__main__":

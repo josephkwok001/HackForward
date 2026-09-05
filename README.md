@@ -239,7 +239,25 @@ cd graph
 python -m unittest test_action.py
 ```
 
-This is not the AgentCore runtime. Feature 2 and 3 are local `8080` first. The workshop deployment seam remains `POST /invocations` on that port.
+### Feature 5: follow-up memory
+
+The assess graph uses LangGraph's `InMemorySaver` keyed by `thread_id`. A follow-up `/assess` with the same ID loads the previous record, appends new facts and timeline events, then re-runs `assess → safety_gate`. Different case IDs are never mixed. The response includes `memory_turn_count` so the UI can show how many remembered timeline events were used, without returning the stored texts.
+
+Restarting the Python server clears this memory. That is expected for the prototype.
+
+```bash
+curl -X POST http://127.0.0.1:8080/assess \
+  -H 'Content-Type: application/json' \
+  -d '{"thread_id":"demo-follow-up","events_and_timeline":[{"time_hint":"first turn","actor":"user","observation":"A caller claimed to be from my bank."}]}'
+
+curl -X POST http://127.0.0.1:8080/assess \
+  -H 'Content-Type: application/json' \
+  -d '{"thread_id":"demo-follow-up","events_and_timeline":[{"time_hint":"follow-up","actor":"user","observation":"They now asked me to transfer money."}]}'
+
+curl http://127.0.0.1:8080/memory/demo-follow-up
+```
+
+This is not the AgentCore runtime. Feature 2, 3, and 5 are local `8080` first. The workshop deployment seam remains `POST /invocations` on that port.
 
 Before submission, complete this checklist:
 

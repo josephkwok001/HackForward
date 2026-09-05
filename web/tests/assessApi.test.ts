@@ -33,6 +33,7 @@ test("keyword seed fills Stage / Risk / Why without a network call", () => {
   assert.equal(seed.source, "rules");
   assert.ok(seed.decision_factors.length > 0);
   assert.ok(seed.decision_factors.length <= 3);
+  assert.equal(seed.memory_turn_count, 0);
 });
 
 test("re-assess sends prior stage; first assess does not", () => {

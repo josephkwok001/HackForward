@@ -15,6 +15,7 @@ function sampleAssess(over: Partial<StageAssessResult> = {}): StageAssessResult 
     uncertainty_notes: [],
     source: "rules",
     loop_count: 1,
+    memory_turn_count: 1,
     ...over,
   };
 }

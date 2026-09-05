@@ -1,18 +1,16 @@
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from "react";
 import { fetchAction, seedAction, toActionRequest } from "./actionApi";
 import { fetchAssess, seedFromRules, toAssessRequest } from "./assessApi";
-import { assess } from "./engine";
+import { assess, promptForQuestion } from "./engine";
 import { prepareEvidence } from "./evidence";
 import { inspectIndicators, type IndicatorReport, type LinkStatus } from "./indicators";
 import { FLAG_BLURB, FLAG_LABEL, INCIDENT_LABEL, SAMPLE_MESSAGE, STAGE_BLURB, STAGE_LABEL } from "./sources";
 import type { ActionPlanResult, EvidencePacket, IncidentState, IntakeMode, StageAssessResult } from "./types";
 
-type View = "intake" | "preparing" | "working" | "record" | "planning" | "plan";
+type View = "intake" | "preparing" | "working" | "clarify" | "record" | "planning" | "plan";
 const PLAN_STEPS = ["Match official playbook", "Build next-action card"];
 type IntakeRecord = Pick<
   IncidentState,
-  | "thread_id"
-  | "raw_evidence_refs"
   | "events_and_timeline"
   | "facts_shared"
   | "incident_type"
@@ -28,10 +26,12 @@ const WORK_STEPS = [
   "Create incident record",
 ];
 
+function shouldAsk(assessed: IncidentState): boolean {
+  return Boolean(assessed.needs_clarification && assessed.unanswered_questions[0]);
+}
+
 function toRecord(state: IncidentState): IntakeRecord {
   return {
-    thread_id: state.thread_id,
-    raw_evidence_refs: state.raw_evidence_refs,
     events_and_timeline: state.events_and_timeline,
     facts_shared: state.facts_shared,
     incident_type: state.incident_type,
@@ -111,20 +111,21 @@ export default function App() {
         prior: adding ? state ?? undefined : undefined,
       });
       setState(assessed);
-      setAssessment(seedFromRules(assessed));
       setActionPlan(null);
       resetIntakeFields();
       setView("working");
       const started = Date.now();
+      let nextAssessment = seedFromRules(assessed);
       try {
-        setAssessment(await fetchAssess(toAssessRequest(assessed)));
+        nextAssessment = await fetchAssess(toAssessRequest(assessed));
       } catch {
         /* Keep the keyword seed so the record page never goes blank. */
       }
+      setAssessment(nextAssessment);
       const wait = Math.max(0, 1800 - (Date.now() - started));
       if (wait) await new Promise((resolve) => window.setTimeout(resolve, wait));
       setAdding(false);
-      setView("record");
+      setView(shouldAsk(assessed) ? "clarify" : "record");
     } catch (cause) {
       setView("intake");
       setError(cause instanceof Error ? cause.message : "Could not read that screenshot. Type what it says instead.");
@@ -145,9 +146,40 @@ export default function App() {
 
   function addMoreEvidence() {
     setAdding(true);
-    setActionPlan(null);
     setError(null);
+    resetIntakeFields();
     setView("intake");
+  }
+
+  function cancelAdding() {
+    setAdding(false);
+    setError(null);
+    resetIntakeFields();
+    setView(actionPlan ? "plan" : "record");
+  }
+
+  async function answerQuestion(question: string, value: string) {
+    if (!state) return;
+    setPlanning(true);
+    try {
+      const assessed = assess({
+        text: "",
+        mode: "describe",
+        prior: state,
+        answer: { question, value },
+      });
+      setState(assessed);
+      setAssessment(seedFromRules(assessed));
+      setActionPlan(null);
+      setView(shouldAsk(assessed) ? "clarify" : "record");
+      try {
+        setAssessment(await fetchAssess(toAssessRequest(assessed)));
+      } catch {
+        /* Keep the keyword seed so the record page never goes blank. */
+      }
+    } finally {
+      setPlanning(false);
+    }
   }
 
   async function openPlan(current: StageAssessResult) {
@@ -182,6 +214,8 @@ export default function App() {
   }
 
   const record = state ? toRecord(state) : null;
+  const clarifyQuestion =
+    state?.unanswered_questions[0] || assessment?.unanswered_questions[0] || "";
 
   return (
     <div className="app">
@@ -193,7 +227,9 @@ export default function App() {
             <p className="tag">
               {view === "plan" || view === "planning"
                 ? "Official next steps. You take them."
-                : "Capture the facts. Decide what comes next later."}
+                : view === "clarify"
+                  ? "One detail before we show the record."
+                  : "Capture the facts. Decide what comes next later."}
             </p>
           </div>
         </div>
@@ -217,6 +253,7 @@ export default function App() {
             onText={setText}
             onFile={onFile}
             onSubmit={onSubmit}
+            onBack={adding ? cancelAdding : undefined}
             onSample={() => {
               setMode("message");
               setText(SAMPLE_MESSAGE);
@@ -235,6 +272,15 @@ export default function App() {
 
         {view === "working" && (
           <Working tick={workTick} title="Building your incident record" steps={WORK_STEPS} />
+        )}
+
+        {view === "clarify" && clarifyQuestion && (
+          <ClarifyView
+            question={clarifyQuestion}
+            busy={planning}
+            onAnswer={answerQuestion}
+            onSkip={() => setView("record")}
+          />
         )}
 
         {view === "planning" && (
@@ -295,6 +341,7 @@ function Intake(props: {
   onText: (value: string) => void;
   onFile: (file?: File) => void;
   onSubmit: (event: FormEvent) => void;
+  onBack?: () => void;
   onSample: () => void;
 }) {
   return (
@@ -362,8 +409,13 @@ function Intake(props: {
         )}
         <div className="row">
           <button type="submit" className="primary">
-            Create incident record
+            {props.adding ? "Add to this case" : "Create incident record"}
           </button>
+          {props.adding && props.onBack && (
+            <button type="button" className="secondary" onClick={props.onBack}>
+              Go back
+            </button>
+          )}
           {!props.adding && (
             <button type="button" className="secondary" onClick={props.onSample}>
               Use sample
@@ -483,6 +535,7 @@ function RecordView({
   const indicators = inspectIndicators(
     record.events_and_timeline.map((event) => event.observation).join("\n"),
   );
+  const remembered = assessment.memory_turn_count || record.events_and_timeline.length;
   return (
     <section className="panel">
       <RecordTabs
@@ -525,21 +578,12 @@ function RecordView({
         ) : (
           <p className="muted">No urgent risk flags.</p>
         )}
-        {assessment.decision_factors.length > 0 && (
-          <details className="fold">
-            <summary>Why the model chose this</summary>
-            <ListOrEmpty items={assessment.decision_factors} />
-          </details>
-        )}
       </article>
       {(indicators.links.length > 0 || indicators.masked_phone_numbers.length > 0) && (
         <IndicatorSection report={indicators} />
       )}
-      {assessment.needs_clarification && assessment.unanswered_questions[0] && (
-        <p className="notice">{assessment.unanswered_questions[0]} Use Add more evidence if you can answer this.</p>
-      )}
-      <details className="fold" open>
-        <summary>What we observed</summary>
+      <section className="observed">
+        <h2>What you shared</h2>
         <p className="incident-line">{INCIDENT_LABEL[record.incident_type] ?? record.incident_type}</p>
         {quoteText && (
           <div className="fact-summary">
@@ -552,35 +596,14 @@ function RecordView({
           </div>
         )}
         <ListOrEmpty items={record.facts_shared} empty="No clear facts extracted yet." />
-      </details>
-      <details className="fold">
-        <summary>Timeline</summary>
-        <ul className="timeline">
-          {record.events_and_timeline.map((event, index) => (
-            <li key={`${event.time_hint}-${index}`}>
-              <strong>{event.time_hint}</strong>
-              <span>{event.observation}</span>
-            </li>
-          ))}
-        </ul>
-      </details>
+      </section>
+      <HistoryLog events={record.events_and_timeline} remembered={remembered} />
       {notes.length > 0 && (
         <details className="fold">
           <summary>Uncertainty</summary>
           <ListOrEmpty items={notes} />
         </details>
       )}
-      <details className="fold">
-        <summary>Case details</summary>
-        <p className="muted">
-          The case ID keeps this incident together when you add more evidence. It is not sent to anyone.
-        </p>
-        <p className="case-id">
-          <span>Case ID</span>
-          <code>{record.thread_id}</code>
-        </p>
-        <ListOrEmpty items={record.raw_evidence_refs} empty="No file references." />
-      </details>
       <div className="row">
         <button type="button" className="primary" onClick={hasPlan ? onShowPlan : onPlan} disabled={planning}>
           {planning ? "Planning next steps…" : hasPlan ? "View next steps" : "Plan next steps"}
@@ -597,18 +620,24 @@ function RecordView({
 }
 
 const INDICATOR_STATUS: Record<LinkStatus, string> = {
-  official_match: "Allow-list match",
-  claimed_org_mismatch: "Domain mismatch",
-  unverified: "Unverified domain",
+  official_match: "Looks official",
+  claimed_org_mismatch: "Does not match",
+  unverified: "Unknown site",
 };
 
 function IndicatorSection({ report }: { report: IndicatorReport }) {
   return (
     <section className="indicator-section" aria-labelledby="indicator-heading">
-      <h2 id="indicator-heading">Links and contact details</h2>
+      <h2 id="indicator-heading">
+        {report.links.length && report.masked_phone_numbers.length
+          ? "Links and numbers"
+          : report.links.length
+            ? "Links in the message"
+            : "Numbers in the message"}
+      </h2>
       {report.claimed_organisations.length > 0 && (
         <p className="claim-line">
-          Claimed organisation: <strong>{report.claimed_organisations.join(", ")}</strong>
+          The sender said they were <strong>{report.claimed_organisations.join(", ")}</strong>.
         </p>
       )}
       {report.links.length > 0 && (
@@ -620,21 +649,107 @@ function IndicatorSection({ report }: { report: IndicatorReport }) {
                 <span>{INDICATOR_STATUS[link.status]}</span>
               </div>
               <p>{link.reason}</p>
-              <code className="submitted-link">Submitted as: {link.displayed_url}</code>
             </li>
           ))}
         </ul>
       )}
       {report.masked_phone_numbers.length > 0 && (
         <div className="phone-indicators">
+          <p className="assess-kicker">Phone numbers</p>
           {report.masked_phone_numbers.map((number) => (
-            <span key={number}>{number} · not verified</span>
+            <span key={number}>{number} · not called</span>
           ))}
         </div>
       )}
-      <p className="indicator-footnote">
-        ScamSafe did not open these links or contact these numbers.
+      <p className="indicator-footnote">We did not open these links or call these numbers.</p>
+    </section>
+  );
+}
+
+function ClarifyView({
+  question,
+  busy,
+  onAnswer,
+  onSkip,
+}: {
+  question: string;
+  busy: boolean;
+  onAnswer: (question: string, value: string) => void;
+  onSkip: () => void;
+}) {
+  const prompt = promptForQuestion(question);
+  return (
+    <section className="panel">
+      <p className="eyebrow">Before the record</p>
+      <h1>{question}</h1>
+      <p className="lede">
+        One answer changes the next step. We will then show the record. ScamSafe still will not call
+        anyone.
       </p>
+      <div className="row">
+        {(prompt?.choices ?? [{ id: "not_sure", label: "I'm not sure" }]).map((choice) => (
+          <button
+            key={choice.id}
+            type="button"
+            className={choice.id === "sent" || choice.id === "otp_yes" ? "danger-choice" : "secondary"}
+            disabled={busy}
+            onClick={() => onAnswer(question, choice.id)}
+          >
+            {busy ? "Updating…" : choice.label}
+          </button>
+        ))}
+      </div>
+      <div className="row">
+        <button type="button" className="textish" onClick={onSkip} disabled={busy}>
+          Skip and see the record
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function HistoryLog({
+  events,
+  remembered,
+}: {
+  events: IntakeRecord["events_and_timeline"];
+  remembered: number;
+}) {
+  const entries = events.filter(
+    (event) => event.observation && !event.observation.startsWith("Provided a screenshot"),
+  );
+  if (!entries.length) return null;
+  return (
+    <section className="history" aria-labelledby="history-heading">
+      <p className="eyebrow">Case memory</p>
+      <h2 id="history-heading">History</h2>
+      <p className="memory-count">
+        {remembered === 1 ? "1 message in this case" : `${remembered} messages in this case`}
+      </p>
+      <p className="history-lede">
+        {entries.length === 1
+          ? "New evidence will appear here as another step."
+          : "The latest update is at the bottom."}
+      </p>
+      <ol className="history-list">
+        {entries.map((event, index) => {
+          const latest = index === entries.length - 1;
+          return (
+            <li key={`${event.observation}-${index}`} className={latest ? "latest" : undefined}>
+              <span className="history-index" aria-hidden="true">
+                {index + 1}
+              </span>
+              <div>
+                <strong>
+                  {index === 0 ? "First report" : `Update ${index + 1}`}
+                  {latest && entries.length > 1 ? " · Latest" : ""}
+                </strong>
+                <span>{event.observation}</span>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
     </section>
   );
 }

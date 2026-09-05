@@ -229,12 +229,13 @@ export function assess(input: AssessInput): IncidentState {
 
   let stage = preferSaferStage(classifyStage(haystack, flags), prior?.current_stage);
 
-  const clarify = input.answer
-    ? null
-    : clarificationFor(
-        { risk_flags: flags, current_stage: stage, raw_evidence_refs: refs },
-        haystack,
-      );
+  let clarify = clarificationFor(
+    { risk_flags: flags, current_stage: stage, raw_evidence_refs: refs },
+    haystack,
+  );
+  if (input.answer && clarify?.question === input.answer.question) {
+    clarify = null;
+  }
   const loop_count = (prior?.loop_count ?? 0) + (prior ? 1 : 0);
   const forcedStop = loop_count >= LOOP_LIMIT;
 
