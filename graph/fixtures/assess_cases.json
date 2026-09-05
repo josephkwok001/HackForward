@@ -1,0 +1,126 @@
+[
+  {
+    "id": "S1",
+    "label": "Suspicious contact",
+    "expected_stage": "suspicious_contact",
+    "expected_urgent": [],
+    "record": {
+      "thread_id": "fix_s1",
+      "incident_type": "impersonation",
+      "facts_shared": [
+        "Someone claimed to be a bank, agency, or other official."
+      ],
+      "events_and_timeline": [
+        {
+          "time_hint": "submitted",
+          "actor": "user",
+          "observation": "DBS sent an SMS saying there was a login I did not recognise. They did not ask me to send money."
+        }
+      ]
+    }
+  },
+  {
+    "id": "S2",
+    "label": "Active pressure",
+    "expected_stage": "active_pressure",
+    "expected_urgent": ["requested_transfer", "impersonating_official"],
+    "record": {
+      "thread_id": "fix_s2",
+      "incident_type": "bank_impersonation",
+      "facts_shared": [
+        "Someone claimed to be a bank, agency, or other official.",
+        "They asked about a transfer, PayNow, or moving money.",
+        "The message used urgency or discouraged outside contact."
+      ],
+      "events_and_timeline": [
+        {
+          "time_hint": "submitted",
+          "actor": "user",
+          "observation": "OCBC Fraud Department: transfer remaining balance via PayNow. Stay on the line. Reply YES."
+        }
+      ]
+    }
+  },
+  {
+    "id": "S5",
+    "label": "OTP shared",
+    "expected_stage": "otp_shared",
+    "expected_urgent": ["requested_otp"],
+    "record": {
+      "thread_id": "fix_s5",
+      "incident_type": "impersonation",
+      "facts_shared": [
+        "They mentioned an OTP or verification code.",
+        "The user indicated they typed the OTP."
+      ],
+      "events_and_timeline": [
+        {
+          "time_hint": "submitted",
+          "actor": "user",
+          "observation": "I typed the OTP into a page the caller sent. They asked for the verification code."
+        }
+      ]
+    }
+  },
+  {
+    "id": "S6",
+    "label": "Payment pending",
+    "expected_stage": "payment_pending",
+    "expected_urgent": ["requested_transfer", "payment_in_progress"],
+    "record": {
+      "thread_id": "fix_s6",
+      "incident_type": "payment_request",
+      "facts_shared": [
+        "They asked about a transfer, PayNow, or moving money.",
+        "The user indicated a transfer may be in progress."
+      ],
+      "events_and_timeline": [
+        {
+          "time_hint": "submitted",
+          "actor": "user",
+          "observation": "I started a PayNow transfer. I'm about to send the money they asked for."
+        }
+      ]
+    }
+  },
+  {
+    "id": "S7",
+    "label": "Money already sent",
+    "expected_stage": "money_sent",
+    "expected_urgent": ["funds_already_moved"],
+    "record": {
+      "thread_id": "fix_s7",
+      "incident_type": "payment_request",
+      "facts_shared": [
+        "The user indicated money may already have been sent."
+      ],
+      "events_and_timeline": [
+        {
+          "time_hint": "submitted",
+          "actor": "user",
+          "observation": "I already transferred the money, it went through."
+        }
+      ]
+    }
+  },
+  {
+    "id": "S4",
+    "label": "Remote app installed",
+    "expected_stage": "app_installed",
+    "expected_urgent": ["requested_remote_access"],
+    "record": {
+      "thread_id": "fix_s4",
+      "incident_type": "remote_access",
+      "facts_shared": [
+        "They mentioned remote access or screen sharing."
+      ],
+      "events_and_timeline": [
+        {
+          "time_hint": "submitted",
+          "actor": "user",
+          "observation": "I installed AnyDesk. They can see my screen."
+        }
+      ]
+    }
+  }
+]

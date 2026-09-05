@@ -101,6 +101,28 @@ export interface AssessInput {
   answer?: { question: string; value: string };
 }
 
+/** Payload for the Feature 2 LangGraph assess service. */
+export interface StageAssessRequest {
+  thread_id: string;
+  facts_shared: string[];
+  events_and_timeline: TimelineEvent[];
+  incident_type: string;
+  current_stage?: Stage;
+  loop_count?: number;
+}
+
+export interface StageAssessResult {
+  thread_id: string;
+  current_stage: Stage;
+  risk_flags: RiskFlag[];
+  needs_clarification: boolean;
+  unanswered_questions: string[];
+  decision_factors: string[];
+  uncertainty_notes: string[];
+  source: "bedrock" | "rules";
+  loop_count: number;
+}
+
 export interface EvidencePacket {
   text: string;
   evidence_refs: string[];

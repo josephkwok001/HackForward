@@ -168,7 +168,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`. Use **Use sample**, then **Create incident record**. Feature 1 stops at the structured record (type, facts, timeline). Add more evidence to reuse the same `thread_id`. The next-action card is not shown in this intake slice.
+Open `http://localhost:5173`. Use **Use sample**, then **Create incident record**. Feature 1 builds the structured record (type, facts, timeline). Feature 2 adds Stage / Risk / Why on that same page when the graph is running. Add more evidence to reuse the same `thread_id`. The next-action card is not shown in this slice.
 
 Person 2 (evidence and safety) runs before extract: secrets are redacted, screenshots stay as file references, and text is read from the image on-device with Tesseract. If reading fails, the user must type what the screenshot says. Person 3 only receives cleaned text plus `raw_evidence_refs`.
 
@@ -184,7 +184,47 @@ To add evidence, send the returned `thread_id` in the next request. The response
 the locked intake-only `IncidentRecord`; it contains no assessment, routing, or
 next-action fields.
 
-This is not the AgentCore runtime. The workshop deployment seam is still a local HTTP service on port `8080` with a `POST /invocations` route. When that exists, the README should document the exact command, required AWS region/model access, environment variables, and a sample request.
+### Feature 2: stage and risk (LangGraph + Amazon Bedrock)
+
+After Feature 1 creates the incident record, a small Python graph on port **8080** classifies `current_stage` and `risk_flags`. The Vite UI posts the record to `POST /assess` (proxied from `http://localhost:5173/assess`). If Bedrock is unset or the call fails, keyword rules fill the same Stage / Risk / Why sections.
+
+Run two processes:
+
+```bash
+# Terminal 1 — friend's UI
+cd web
+npm install
+npm run dev
+```
+
+```bash
+# Terminal 2 — assess graph
+cd graph
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app:app --host 127.0.0.1 --port 8080
+```
+
+Copy [`.env.example`](.env.example) to `.env` at the repo root and fill `AWS_REGION`, credentials (or `AWS_PROFILE`), and the workshop `BEDROCK_MODEL_ID`. Never put AWS keys in `web/` or any frontend file.
+
+```bash
+curl -X POST http://127.0.0.1:8080/assess \
+  -H 'Content-Type: application/json' \
+  -d '{"thread_id":"demo","incident_type":"bank_impersonation","facts_shared":["They asked about a transfer, PayNow, or moving money."],"events_and_timeline":[{"time_hint":"now","actor":"user","observation":"OCBC: stay on the line and PayNow the remaining balance. Reply YES."}]}'
+```
+
+`POST /invocations` is the same handler, for the later AgentCore seam.
+
+Compare rules vs Bedrock on labelled fixtures:
+
+```bash
+cd graph
+python eval_assess.py
+python -m unittest test_assess.py
+```
+
+This is not the AgentCore runtime. Feature 2 is local `8080` first. The workshop deployment seam remains `POST /invocations` on that port.
 
 Before submission, complete this checklist:
 
