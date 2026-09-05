@@ -53,16 +53,16 @@ export default function App() {
   useEffect(() => {
     if (view === "preparing") {
       setWorkTick(0);
-      const timers = [0, 1].map((i) => window.setTimeout(() => setWorkTick(i + 1), 240 + i * 280));
+      const timers = [0, 1].map((i) => window.setTimeout(() => setWorkTick(i + 1), 500 + i * 500));
       return () => timers.forEach(clearTimeout);
     }
     if (view !== "working") return;
     setWorkTick(0);
-    const timers = [0, 1, 2].map((i) => window.setTimeout(() => setWorkTick(i + 1), 280 + i * 320));
+    const timers = [0, 1, 2].map((i) => window.setTimeout(() => setWorkTick(i + 1), 600 + i * 550));
     const done = window.setTimeout(() => {
       setView("record");
       setAdding(false);
-    }, 1180);
+    }, 2500);
     return () => {
       timers.forEach(clearTimeout);
       clearTimeout(done);
@@ -195,7 +195,6 @@ export default function App() {
       </main>
 
       <footer className="foot">
-        <span className="muted">Intake · Person 2 cleans evidence, Person 3 fills the record</span>
         {record && (
           <button className="textish" type="button" onClick={startOver}>
             Start over
@@ -300,12 +299,16 @@ function Intake(props: {
 function Working({ tick, title, steps }: { tick: number; title: string; steps: string[] }) {
   return (
     <section className="panel working" aria-live="polite">
+      <div className="loader" aria-hidden="true"><span /></div>
       <p className="eyebrow">Processing intake</p>
       <h1>{title}</h1>
+      <p className="working-copy">Keeping the evidence organized and extracting only what was observed.</p>
       <ol className="steps">
         {steps.map((step, index) => (
           <li key={step} className={tick > index ? "done" : tick === index ? "now" : ""}>
-            {step}
+            <span className="step-icon" aria-hidden="true">{tick > index ? "✓" : tick === index ? "" : "·"}</span>
+            <span>{step}</span>
+            {tick === index && <span className="step-status">In progress</span>}
           </li>
         ))}
       </ol>
