@@ -6,7 +6,8 @@ import { prepareEvidence } from "./evidence";
 import { FLAG_BLURB, FLAG_LABEL, INCIDENT_LABEL, SAMPLE_MESSAGE, STAGE_BLURB, STAGE_LABEL } from "./sources";
 import type { ActionPlanResult, EvidencePacket, IncidentState, IntakeMode, StageAssessResult } from "./types";
 
-type View = "intake" | "preparing" | "working" | "record";
+type View = "intake" | "preparing" | "working" | "record" | "planning" | "plan";
+const PLAN_STEPS = ["Match official playbook", "Build next-action card"];
 type IntakeRecord = Pick<
   IncidentState,
   | "thread_id"
@@ -66,6 +67,11 @@ export default function App() {
       const timers = [0, 1].map((i) => window.setTimeout(() => setWorkTick(i + 1), 500 + i * 500));
       return () => timers.forEach(clearTimeout);
     }
+    if (view === "planning") {
+      setWorkTick(0);
+      const timers = [0, 1].map((i) => window.setTimeout(() => setWorkTick(i + 1), 400 + i * 450));
+      return () => timers.forEach(clearTimeout);
+    }
     if (view !== "working") return;
     setWorkTick(0);
     const timers = [0, 1, 2, 3].map((i) => window.setTimeout(() => setWorkTick(i + 1), 500 + i * 450));
@@ -105,6 +111,7 @@ export default function App() {
       });
       setState(assessed);
       setAssessment(seedFromRules(assessed));
+      setActionPlan(null);
       resetIntakeFields();
       setView("working");
       const started = Date.now();
@@ -135,6 +142,32 @@ export default function App() {
     setMode("screenshot");
   }
 
+  function addMoreEvidence() {
+    setAdding(true);
+    setActionPlan(null);
+    setError(null);
+    setView("intake");
+  }
+
+  async function openPlan(current: StageAssessResult) {
+    if (actionPlan) {
+      setView("plan");
+      return;
+    }
+    setPlanning(true);
+    setView("planning");
+    const started = Date.now();
+    try {
+      setActionPlan(await fetchAction(toActionRequest(current)));
+    } catch {
+      setActionPlan(seedAction(current));
+    }
+    const wait = Math.max(0, 900 - (Date.now() - started));
+    if (wait) await new Promise((resolve) => window.setTimeout(resolve, wait));
+    setPlanning(false);
+    setView("plan");
+  }
+
   function startOver() {
     resetIntakeFields();
     setState(null);
@@ -156,11 +189,17 @@ export default function App() {
           <span className="mark" aria-hidden="true" />
           <div>
             <p className="wordmark">ScamSafe</p>
-            <p className="tag">Capture the facts. Decide what comes next later.</p>
+            <p className="tag">
+              {view === "plan" || view === "planning"
+                ? "Official next steps. You take them."
+                : "Capture the facts. Decide what comes next later."}
+            </p>
           </div>
         </div>
         <p className="disclaimer">
-          This creates an incident record only. Do not share passwords, OTPs, PINs, or full card numbers.
+          {view === "plan"
+            ? "These are steps for you. ScamSafe will not contact a bank, 1799, or the police."
+            : "This creates an incident record only. Do not share passwords, OTPs, PINs, or full card numbers."}
         </p>
       </header>
 
@@ -197,28 +236,37 @@ export default function App() {
           <Working tick={workTick} title="Building your incident record" steps={WORK_STEPS} />
         )}
 
+        {view === "planning" && (
+          <Working
+            tick={workTick}
+            title="Planning what you should do next"
+            steps={PLAN_STEPS}
+            eyebrow="Next-action plan"
+            copy="Matching this incident to an official playbook. The app will not call anyone."
+          />
+        )}
+
         {view === "record" && record && assessment && (
           <RecordView
             record={record}
             assessment={assessment}
-            actionPlan={actionPlan}
+            hasPlan={Boolean(actionPlan)}
             planning={planning}
             packet={packet}
-            onPlan={async () => {
-              setPlanning(true);
-              try {
-                setActionPlan(await fetchAction(toActionRequest(assessment)));
-              } catch {
-                setActionPlan(seedAction(assessment));
-              } finally {
-                setPlanning(false);
-              }
-            }}
-            onAdd={() => {
-              setAdding(true);
-              setError(null);
-              setView("intake");
-            }}
+            onShowPlan={() => setView("plan")}
+            onPlan={() => void openPlan(assessment)}
+            onAdd={addMoreEvidence}
+            onStartOver={startOver}
+          />
+        )}
+
+        {view === "plan" && record && assessment && actionPlan && (
+          <PlanView
+            record={record}
+            assessment={assessment}
+            actionPlan={actionPlan}
+            onShowRecord={() => setView("record")}
+            onAdd={addMoreEvidence}
             onStartOver={startOver}
           />
         )}
@@ -326,15 +374,25 @@ function Intake(props: {
   );
 }
 
-function Working({ tick, title, steps }: { tick: number; title: string; steps: string[] }) {
+function Working({
+  tick,
+  title,
+  steps,
+  eyebrow = "Processing intake",
+  copy = "Extracting what was observed, then classifying stage and risk on Amazon Bedrock.",
+}: {
+  tick: number;
+  title: string;
+  steps: string[];
+  eyebrow?: string;
+  copy?: string;
+}) {
   return (
     <section className="panel working" aria-live="polite">
       <div className="loader" aria-hidden="true"><span /></div>
-      <p className="eyebrow">Processing intake</p>
+      <p className="eyebrow">{eyebrow}</p>
       <h1>{title}</h1>
-      <p className="working-copy">
-        Extracting what was observed, then classifying stage and risk on Amazon Bedrock.
-      </p>
+      <p className="working-copy">{copy}</p>
       <ol className="steps">
         {steps.map((step, index) => (
           <li key={step} className={tick > index ? "done" : tick === index ? "now" : ""}>
@@ -356,27 +414,64 @@ function fullObservation(record: IntakeRecord): string | null {
   );
 }
 
+function RecordTabs({
+  current,
+  planning,
+  onRecord,
+  onPlan,
+}: {
+  current: "record" | "plan";
+  planning?: boolean;
+  onRecord: () => void;
+  onPlan: () => void;
+}) {
+  return (
+    <div className="tabs tabs-2" role="tablist" aria-label="Incident views">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={current === "record"}
+        className={current === "record" ? "tab on" : "tab"}
+        onClick={onRecord}
+      >
+        Record
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={current === "plan"}
+        className={current === "plan" ? "tab on" : "tab"}
+        onClick={onPlan}
+        disabled={planning}
+      >
+        {planning ? "Planning…" : "Next steps"}
+      </button>
+    </div>
+  );
+}
+
 function RecordView({
   record,
   assessment,
-  actionPlan,
+  hasPlan,
   planning,
   packet,
+  onShowPlan,
   onPlan,
   onAdd,
   onStartOver,
 }: {
   record: IntakeRecord;
   assessment: StageAssessResult;
-  actionPlan: ActionPlanResult | null;
+  hasPlan: boolean;
   planning: boolean;
   packet: EvidencePacket | null;
+  onShowPlan: () => void;
   onPlan: () => void;
   onAdd: () => void;
   onStartOver: () => void;
 }) {
   const [showQuote, setShowQuote] = useState(false);
-  const [understood, setUnderstood] = useState(false);
   const quote = fullObservation(record);
   const quoteLong = Boolean(quote && quote.length > 160);
   const quoteText = quote && quoteLong && !showQuote ? `${quote.slice(0, 157)}…` : quote;
@@ -386,6 +481,12 @@ function RecordView({
   );
   return (
     <section className="panel">
+      <RecordTabs
+        current="record"
+        planning={planning}
+        onRecord={() => undefined}
+        onPlan={hasPlan ? onShowPlan : onPlan}
+      />
       <p className="eyebrow">Record created</p>
       <h1>Here is what we captured</h1>
       {record.redaction_notice && <p className="notice">{record.redaction_notice}</p>}
@@ -473,38 +574,75 @@ function RecordView({
         </p>
         <ListOrEmpty items={record.raw_evidence_refs} empty="No file references." />
       </details>
-      {actionPlan && (
-        <article className="action-card">
-          <div className="assess-head">
-            <p className="eyebrow">Next steps</p>
-            <span className="badge on">Official playbook</span>
-          </div>
-          <p className="assess-stage">{actionPlan.selected_next_action.title}</p>
-          <p className="muted">This app does not call anyone. These are steps for you to take.</p>
-          <ol className="plan-steps">
-            {actionPlan.selected_next_action.steps.map((step) => (
-              <li key={step}>{step}</li>
-            ))}
-          </ol>
-          <p className="source-line">
-            Source:{" "}
-            <a href={actionPlan.selected_next_action.source_url} target="_blank" rel="noreferrer">
-              {actionPlan.selected_next_action.source_title}
-            </a>
-          </p>
-          <label className="consent">
-            <input
-              type="checkbox"
-              checked={understood}
-              onChange={(event) => setUnderstood(event.target.checked)}
-            />
-            I understand these steps. ScamSafe will not contact a bank, 1799, or the police for me.
-          </label>
-        </article>
-      )}
       <div className="row">
-        <button type="button" className="primary" onClick={onPlan} disabled={planning}>
-          {planning ? "Planning next steps…" : "Plan next steps"}
+        <button type="button" className="primary" onClick={hasPlan ? onShowPlan : onPlan} disabled={planning}>
+          {planning ? "Planning next steps…" : hasPlan ? "View next steps" : "Plan next steps"}
+        </button>
+        <button type="button" className="secondary" onClick={onAdd}>
+          Add more evidence
+        </button>
+        <button type="button" className="secondary" onClick={onStartOver}>
+          Start a new record
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function PlanView({
+  record,
+  assessment,
+  actionPlan,
+  onShowRecord,
+  onAdd,
+  onStartOver,
+}: {
+  record: IntakeRecord;
+  assessment: StageAssessResult;
+  actionPlan: ActionPlanResult;
+  onShowRecord: () => void;
+  onAdd: () => void;
+  onStartOver: () => void;
+}) {
+  const [understood, setUnderstood] = useState(false);
+  const action = actionPlan.selected_next_action;
+  return (
+    <section className="panel">
+      <RecordTabs current="plan" onRecord={onShowRecord} onPlan={() => undefined} />
+      <p className="eyebrow">Next steps</p>
+      <h1>{action.title}</h1>
+      <p className="lede">
+        Based on {INCIDENT_LABEL[record.incident_type] ?? record.incident_type} at the{" "}
+        {STAGE_LABEL[assessment.current_stage].toLowerCase()} stage. This app does not call anyone.
+      </p>
+      <article className="action-card">
+        <div className="assess-head">
+          <p className="eyebrow">Official playbook</p>
+          <span className="badge on">For you to do</span>
+        </div>
+        <ol className="plan-steps">
+          {action.steps.map((step) => (
+            <li key={step}>{step}</li>
+          ))}
+        </ol>
+        <p className="source-line">
+          Source:{" "}
+          <a href={action.source_url} target="_blank" rel="noreferrer">
+            {action.source_title}
+          </a>
+        </p>
+        <label className="consent">
+          <input
+            type="checkbox"
+            checked={understood}
+            onChange={(event) => setUnderstood(event.target.checked)}
+          />
+          I understand these steps. ScamSafe will not contact a bank, 1799, or the police for me.
+        </label>
+      </article>
+      <div className="row">
+        <button type="button" className="secondary" onClick={onShowRecord}>
+          Back to record
         </button>
         <button type="button" className="secondary" onClick={onAdd}>
           Add more evidence

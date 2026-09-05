@@ -49,6 +49,7 @@ main { display: grid; }
 
 form { display: grid; gap: 1rem; }
 .tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.25rem; padding: 0.28rem; border: 1px solid var(--line); border-radius: 0.85rem; background: var(--paper-soft); }
+.tabs-2 { grid-template-columns: repeat(2, 1fr); margin-bottom: 1.25rem; }
 .tab { min-height: 2.7rem; padding: 0.5rem; border: 0; border-radius: 0.65rem; color: var(--muted); background: transparent; font-size: 0.9rem; font-weight: 600; transition: 160ms ease; }
 .tab:hover { color: var(--green-dark); background: #eaf3ed; }
 .tab.on { color: #fff; background: var(--green-dark); box-shadow: 0 3px 8px rgba(15,62,46,0.18); }
