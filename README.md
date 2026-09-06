@@ -1,12 +1,61 @@
-# ScamSafe: shared agentic-AI hackathon toolkit
+# ScamSafe
 
-Proof of concept for an **agentic** Singapore scam-response loop: intake → one question → official next-action card → re-assess when evidence changes. The agent lives in **Python** (`graph/`). The browser UI is in `web/`.
+Proof-of-concept **agentic** assistant for impersonation scams in Singapore. The person is already under pressure — a fake bank SMS, a caller who says stay on the line, a PayNow request. Instead of a one-off chatbot reply, ScamSafe keeps a typed incident state (facts, stage, risk), asks at most one question when that answer would change the next step, then shows **one official next-action card**. You make every call. The app never phones a bank, 1799, or the police.
 
-This README is enough to run the project. Longer walkthroughs: [User Guide](docs/UserGuide.md), [Developer Guide](docs/DeveloperGuide.md). Put evaluation numbers on the **slides**, not in extra repo reports.
+A Python **LangGraph** service classifies stage and risk (Amazon Bedrock when configured, keyword rules otherwise), applies a safety gate, and matches the case to an allow-listed playbook. Each case has a `thread_id`. LangGraph’s `InMemorySaver` stores the last record for that id. New evidence is **appended** onto that checkpoint (facts and timeline are merged; other threads are never mixed), then the graph runs again: `assess → safety_gate`. The next-action card is rebuilt from the updated state — for example from “hang up and call 1799” to “call your bank now” after money has left. Restarting the Python process clears this memory.
 
-## How to run (same path as the submission video)
+![ScamSafe intake](docs/images/app-intake.png)
 
-You need **Node.js 20+** and **Python 3.11+**. Windows, macOS, and Linux all work. Use `python -m uvicorn`, not bare `uvicorn`.
+Intake after **Use sample**: fake OCBC SMS, PayNow number, and a lookalike link (`ocbc-secure-login.xyz`) that the record page flags without opening.
+
+## Documentation
+
+This README is enough to install, configure, and run the project (same path as the submission video). Longer guides live in `docs/`:
+
+| Doc | Who it is for | What it covers |
+|---|---|---|
+| **[User Guide](docs/UserGuide.md)** | Anyone retrieving the app from GitHub | Install Node/Python on Windows, macOS, or Linux; download or clone; start both terminals; every screen (message, screenshot, one question, record, next steps, add evidence); FAQ and known issues including `langchain_core` / wrong Uvicorn |
+| **[Developer Guide](docs/DeveloperGuide.md)** | Teammates changing the code | Architecture, LangGraph nodes, HTTP contracts, safety rules, tests, user stories, manual test script |
+
+Evaluation numbers belong on the **slides**, not in extra repo reports.
+
+## Stack
+
+| Layer | Choice | Where |
+|---|---|---|
+| UI | React 19 + TypeScript + Vite 7 | `web/` |
+| On-device OCR / redaction | Tesseract.js | `web/src/evidence.ts` |
+| Intake API (dev) | Vite middleware `POST /intake` | `web/vite.config.ts` |
+| Agent runtime | Python 3.11+, FastAPI, Uvicorn | `graph/app.py` (port **8080**) |
+| Orchestration + memory | LangGraph + `InMemorySaver` keyed by `thread_id` | `graph/workflow.py` |
+| Schemas | Pydantic v2 | `graph/state.py` |
+| Model (optional) | Amazon Bedrock via `ChatBedrockConverse` | `graph/nodes/assess.py` |
+| Fallback | Keyword rules + curated playbook | `graph/fallback.py`, `web/src/engine.ts`, `web/src/sources.ts` |
+| Secrets | Repo-root `.env` (never the frontend) | `.env.example`, `graph/envload.py` |
+
+## Environment setup
+
+Works on **Windows, macOS, and Linux**. A Mac is not required.
+
+1. Install **[Node.js 20+](https://nodejs.org/)** (LTS). This includes `npm`. On Windows, leave **Add to PATH** ticked. Confirm: `node -v` and `npm -v`.
+2. Install **[Python 3.11+](https://www.python.org/downloads/)**. On Windows, tick **Add python.exe to PATH**. Confirm: `python --version` or `python3 --version`.
+3. Get the code: clone `https://github.com/josephkwok001/HackForward.git`, or GitHub **Code → Download ZIP** and unzip.
+4. **Path variables and secrets** — copy [`.env.example`](.env.example) to `.env` at the **repository root** (not inside `web/`):
+
+```text
+AWS_REGION=ap-southeast-1
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+# AWS_SESSION_TOKEN=          # workshop temporary keys
+# AWS_PROFILE=workshop        # alternative to access keys
+BEDROCK_MODEL_ID=anthropic.claude-3-5-sonnet-20240620-v1:0
+```
+
+AWS is **optional**. Without keys the same screens work (**Keyword fallback**). Never commit `.env` or put keys in `web/`.
+
+Python dependencies are listed in [`graph/requirements.txt`](graph/requirements.txt). Install them **inside a virtual environment** (next section). Always use `python -m pip` and `python -m uvicorn`. Bare `uvicorn` can hit the system Python and raise `No module named 'langchain_core'`.
+
+## How to run (same path as the video)
 
 **Terminal 1 — website**
 
@@ -16,7 +65,11 @@ npm install
 npm run dev
 ```
 
-**Terminal 2 — Python agent (venv + requirements.txt)**
+Leave it open. Expected: `http://localhost:5173`.
+
+**Terminal 2 — Python agent**
+
+macOS / Linux:
 
 ```bash
 cd graph
@@ -26,11 +79,13 @@ python -m pip install -r requirements.txt
 python -m uvicorn app:app --host 127.0.0.1 --port 8080
 ```
 
-On Windows Command Prompt, activate with `.venv\Scripts\activate.bat`.
+Windows (Command Prompt): use `.venv\Scripts\activate.bat`. PowerShell: `.\.venv\Scripts\Activate.ps1` (or use Command Prompt if scripts are blocked).
 
-**Secrets / path variables:** copy [`.env.example`](.env.example) to `.env` at the **repo root**. Fill `AWS_REGION`, `BEDROCK_MODEL_ID`, and either `AWS_PROFILE` or `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (plus `AWS_SESSION_TOKEN` for workshop keys). Never put keys in `web/`. The app still runs without AWS (**Keyword fallback**).
+Leave it open. Expected: `Uvicorn running on http://127.0.0.1:8080`.
 
-Open `http://localhost:5173` on **that same computer**. Video path: **Use sample** → **Create incident record** → answer the one or two questions → **Plan next steps** → **Add more evidence** → **Plan next steps** again.
+Open `http://localhost:5173` **on that same computer**. Then: **Use sample** → **Create incident record** → answer the question(s) (for example **Not yet**, then **Yes, still talking**) → on the record, point at **Links and numbers** if shown → **Plan next steps** → **Add more evidence** → **Plan next steps** again.
+
+Step-by-step clicks, paste shortcuts, and troubleshooting: [User Guide — Getting Started](docs/UserGuide.md#getting-started).
 
 ## What each important file does
 
@@ -57,8 +112,6 @@ Open `http://localhost:5173` on **that same computer**. Video path: **Use sample
 | `.env.example` | Required path variables; copy to `.env` |
 | `graph/fixtures/` + `eval_assess.py` | Small labelled cases (optional; results go on slides) |
 | `skills/` | Team design/safety checklists, not required to run |
-
-## Product concept
 
 ## Product concept
 
@@ -214,8 +267,7 @@ Track schema-validation pass rate, stage/risk accuracy, risk recall for urgent c
 
 ## Guides
 
-- [User Guide](docs/UserGuide.md) — get the repo from GitHub, run it (Windows / macOS / Linux), then use the features
-- [Developer Guide](docs/DeveloperGuide.md) — setup, architecture, implementation, requirements, testing
+See [Documentation](#documentation) at the top: [User Guide](docs/UserGuide.md) for running and using the app, [Developer Guide](docs/DeveloperGuide.md) for architecture and tests.
 
 ## Run and submission notes
 
