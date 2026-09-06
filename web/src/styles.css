@@ -28,7 +28,7 @@ body {
 h1, h2, .wordmark { font-family: "Space Grotesk", "Segoe UI", sans-serif; }
 h1 { margin: 0 0 0.65rem; font-size: clamp(1.85rem, 5vw, 2.55rem); line-height: 1.12; letter-spacing: -0.045em; }
 h2 { letter-spacing: -0.02em; }
-button, input, textarea, a { font: inherit; }
+button, input:not([type="file"]), textarea, a { font: inherit; }
 button { cursor: pointer; }
 button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visible { outline: 3px solid #91c8ae; outline-offset: 2px; }
 
@@ -56,9 +56,17 @@ form { display: grid; gap: 1rem; }
 textarea { width: 100%; min-height: 10rem; padding: 1rem 1.05rem; border: 1px solid var(--line); border-radius: 0.95rem; color: var(--ink); background: #fff; resize: vertical; line-height: 1.55; transition: 160ms ease; }
 textarea::placeholder { color: #9aa69f; }
 textarea:focus { outline: 0; border-color: #78aa8d; box-shadow: 0 0 0 4px rgba(82,157,116,0.14); }
-.upload { display: grid; gap: 0.75rem; padding: 1rem; border: 1px dashed #a9c5b4; border-radius: 1rem; background: #f5faf6; }
-.upload input[type="file"] { width: 100%; color: var(--muted); font-size: 0.86rem; }
+.upload { position: relative; display: grid; gap: 0.75rem; padding: 1rem; border: 1px dashed #a9c5b4; border-radius: 1rem; background: #f5faf6; }
+.upload-input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.upload-pick { display: inline-flex; align-items: center; justify-self: start; }
 .upload .muted { margin: 0; font-size: 0.8rem; }
+.upload .file-name { margin: 0; color: var(--green-dark); font-size: 0.86rem; font-weight: 600; }
 .thumb { width: min(100%, 19rem); max-height: 15rem; object-fit: cover; border: 1px solid var(--line); border-radius: 0.8rem; }
 
 .row { display: flex; flex-wrap: wrap; gap: 0.65rem; margin-top: 0.2rem; }

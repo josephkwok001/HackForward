@@ -248,6 +248,7 @@ export default function App() {
             error={error}
             adding={adding}
             previewUrl={previewUrl}
+            fileName={file?.name}
             fileRef={fileRef}
             onMode={setMode}
             onText={setText}
@@ -336,6 +337,7 @@ function Intake(props: {
   error: string | null;
   adding: boolean;
   previewUrl?: string;
+  fileName?: string;
   fileRef: RefObject<HTMLInputElement | null>;
   onMode: (mode: IntakeMode) => void;
   onText: (value: string) => void;
@@ -386,11 +388,24 @@ function Intake(props: {
         {props.mode === "screenshot" && (
           <div className="upload">
             <input
+              id="screenshot-file"
               ref={props.fileRef}
+              className="upload-input"
               type="file"
               accept="image/*"
               onChange={(event) => props.onFile(event.target.files?.[0])}
             />
+            <button
+              type="button"
+              className="secondary upload-pick"
+              onClick={() => {
+                if (props.fileRef.current) props.fileRef.current.value = "";
+                props.fileRef.current?.click();
+              }}
+            >
+              {props.fileName ? "Replace screenshot" : "Upload screenshot"}
+            </button>
+            {props.fileName && <p className="file-name">{props.fileName}</p>}
             {props.previewUrl && (
               <img className="thumb" src={props.previewUrl} alt="Attached screenshot preview" />
             )}

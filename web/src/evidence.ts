@@ -44,8 +44,22 @@ export function neutralizeUntrusted(text: string): string {
     .replace(/\byou are now\b/gi, "[untrusted phrase removed]");
 }
 
+/** Fix common OCR swaps so keyword extract can still see bank / PayNow / 1799. */
+export function normalizeOcrText(text: string): string {
+  return text
+    .replace(/\bpay\s*n[o0]w\b/gi, "PayNow")
+    .replace(/\b0cbc\b/gi, "OCBC")
+    .replace(/\boc8c\b/gi, "OCBC")
+    .replace(/\bd8s\b/gi, "DBS")
+    .replace(/\bu0b\b/gi, "UOB")
+    .replace(/\b17[89]9\b/g, "1799")
+    .replace(/\bfraud\s*departmen[t1]\b/gi, "Fraud Department")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function assertSafeImage(file: File): void {
-  if (!file.type.startsWith("image/")) {
+  if (!file.type.startsWith("image/") && !/\.(png|jpe?g|webp|gif|heic|heif)$/i.test(file.name)) {
     throw new Error("That file is not an image. Attach a screenshot photo instead.");
   }
   if (file.size > MAX_IMAGE_BYTES) {
@@ -53,18 +67,45 @@ export function assertSafeImage(file: File): void {
   }
 }
 
-export async function readScreenshotText(file: File): Promise<{ text: string; confidence: number }> {
+function localTessUrl(name: string): string {
+  return new URL(`tesseract/${name}`, window.location.origin + "/").href;
+}
+
+type TessWorker = Awaited<ReturnType<(typeof import("tesseract.js"))["createWorker"]>>;
+let workerTask: Promise<TessWorker> | null = null;
+
+async function startWorker(): Promise<TessWorker> {
   const { createWorker } = await import("tesseract.js");
-  const worker = await createWorker("eng");
   try {
-    const result = await worker.recognize(file);
-    return {
-      text: result.data.text.replace(/\s+/g, " ").trim(),
-      confidence: result.data.confidence ?? 0,
-    };
-  } finally {
-    await worker.terminate();
+    return await createWorker("eng");
+  } catch (cdnError) {
+    console.warn("OCR CDN worker failed, using local files", cdnError);
+    return await createWorker("eng", 1, {
+      workerPath: localTessUrl("worker.min.js"),
+      corePath: localTessUrl("tesseract-core-simd-lstm.wasm.js"),
+      langPath: localTessUrl("").replace(/\/$/, ""),
+      workerBlobURL: true,
+    });
   }
+}
+
+async function ocrWorker(): Promise<TessWorker> {
+  if (!workerTask) {
+    workerTask = startWorker().catch((error) => {
+      workerTask = null;
+      throw error;
+    });
+  }
+  return workerTask;
+}
+
+export async function readScreenshotText(file: File): Promise<{ text: string; confidence: number }> {
+  const worker = await ocrWorker();
+  const result = await worker.recognize(file);
+  return {
+    text: normalizeOcrText(result.data.text),
+    confidence: result.data.confidence ?? 0,
+  };
 }
 
 export async function prepareEvidence(input: {
@@ -82,17 +123,19 @@ export async function prepareEvidence(input: {
     evidence_refs.push(`screenshot:${input.file.name}`);
     try {
       const ocr = await readScreenshotText(input.file);
-      if (ocr.text.length >= MIN_OCR_CHARS && ocr.confidence >= MIN_OCR_CONFIDENCE) {
-        ocr_status = "ok";
-        raw = [ocr.text, raw].filter(Boolean).join("\n");
-      } else if (ocr.text) {
-        ocr_status = "weak";
+      if (ocr.text.length >= MIN_OCR_CHARS) {
+        ocr_status = ocr.confidence >= MIN_OCR_CONFIDENCE ? "ok" : "weak";
         raw = [ocr.text, raw].filter(Boolean).join("\n");
       } else {
         ocr_status = "failed";
       }
-    } catch {
+    } catch (error) {
+      console.error("Screenshot OCR failed", error);
       ocr_status = "failed";
+      if (!input.text.trim()) {
+        const detail = error instanceof Error ? error.message : "OCR worker failed";
+        throw new Error(`Could not read that screenshot (${detail}). Type what it says, then try again.`);
+      }
     }
   }
 

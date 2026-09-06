@@ -1,7 +1,15 @@
+import { copyFileSync, existsSync, mkdirSync, statSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { extractIncident, validateIntakeRequest } from "./src/intake.ts";
 import type { IncidentRecord, IntakeRequest } from "./src/types.ts";
+
+const WEB_ROOT = dirname(fileURLToPath(import.meta.url));
+const TESS_PUBLIC = join(WEB_ROOT, "public", "tesseract");
+const TRAINED_DATA_URL =
+  "https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz";
 
 const MAX_BODY_BYTES = 25_000;
 
@@ -66,8 +74,44 @@ function intakeApi(): Plugin {
   };
 }
 
+function tesseractAssets(): Plugin {
+  async function ensureAssets() {
+    mkdirSync(TESS_PUBLIC, { recursive: true });
+    const copies: Array<[string, string]> = [
+      [join(WEB_ROOT, "node_modules/tesseract.js/dist/worker.min.js"), "worker.min.js"],
+      [join(WEB_ROOT, "node_modules/tesseract.js-core/tesseract-core-simd-lstm.wasm.js"), "tesseract-core-simd-lstm.wasm.js"],
+      [join(WEB_ROOT, "node_modules/tesseract.js-core/tesseract-core-simd-lstm.wasm"), "tesseract-core-simd-lstm.wasm"],
+    ];
+    for (const [from, name] of copies) {
+      if (!existsSync(from)) {
+        throw new Error(`Missing Tesseract file: ${from}. Run npm install in web/.`);
+      }
+      copyFileSync(from, join(TESS_PUBLIC, name));
+    }
+    const trained = join(TESS_PUBLIC, "eng.traineddata.gz");
+    const stale = existsSync(trained) && statSync(trained).size > 6_000_000;
+    if (!existsSync(trained) || stale) {
+      const response = await fetch(TRAINED_DATA_URL);
+      if (!response.ok) {
+        throw new Error(`Could not download OCR language data (${response.status}).`);
+      }
+      await (await import("node:fs/promises")).writeFile(trained, Buffer.from(await response.arrayBuffer()));
+    }
+  }
+
+  return {
+    name: "scamsafe-tesseract-assets",
+    async buildStart() {
+      await ensureAssets();
+    },
+    async configureServer() {
+      await ensureAssets();
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), intakeApi()],
+  plugins: [react(), intakeApi(), tesseractAssets()],
   server: {
     port: 5173,
     strictPort: true,
@@ -87,6 +131,6 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ["tesseract.js"],
+    include: ["tesseract.js"],
   },
 });

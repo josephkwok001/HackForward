@@ -154,6 +154,11 @@ Track schema-validation pass rate, stage/risk accuracy, risk recall for urgent c
 - Present uncertainty and emergency escalation clearly; do not promise that money can be recovered.
 - Use deterministic gates for urgent signals and human handoff.
 
+## Guides
+
+- [User Guide](docs/UserGuide.md) — get the repo from GitHub, run it (Windows / macOS / Linux), then use the features
+- [Developer Guide](docs/DeveloperGuide.md) — setup, architecture, implementation, requirements, testing
+
 ## Run and submission notes
 
 ### Baseline UI
@@ -202,8 +207,8 @@ npm run dev
 cd graph
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app:app --host 127.0.0.1 --port 8080
+python -m pip install -r requirements.txt
+python -m uvicorn app:app --host 127.0.0.1 --port 8080
 ```
 
 Copy [`.env.example`](.env.example) to `.env` at the repo root and fill `AWS_REGION`, credentials (or `AWS_PROFILE`), and the workshop `BEDROCK_MODEL_ID`. Never put AWS keys in `web/` or any frontend file.
