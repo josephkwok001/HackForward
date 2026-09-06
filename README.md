@@ -1,6 +1,64 @@
 # ScamSafe: shared agentic-AI hackathon toolkit
 
-This repository is the team source of truth for a software-only Singapore scam-response product and the shared skills that guide its design. A baseline front end now lives in `web/`. It is a local, rule-based stand-in for the later LangGraph workflow so the team can test the intake → one question → next-action card → re-assess loop before the model layer exists.
+Proof of concept for an **agentic** Singapore scam-response loop: intake → one question → official next-action card → re-assess when evidence changes. The agent lives in **Python** (`graph/`). The browser UI is in `web/`.
+
+This README is enough to run the project. Longer walkthroughs: [User Guide](docs/UserGuide.md), [Developer Guide](docs/DeveloperGuide.md). Put evaluation numbers on the **slides**, not in extra repo reports.
+
+## How to run (same path as the submission video)
+
+You need **Node.js 20+** and **Python 3.11+**. Windows, macOS, and Linux all work. Use `python -m uvicorn`, not bare `uvicorn`.
+
+**Terminal 1 — website**
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+**Terminal 2 — Python agent (venv + requirements.txt)**
+
+```bash
+cd graph
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m uvicorn app:app --host 127.0.0.1 --port 8080
+```
+
+On Windows Command Prompt, activate with `.venv\Scripts\activate.bat`.
+
+**Secrets / path variables:** copy [`.env.example`](.env.example) to `.env` at the **repo root**. Fill `AWS_REGION`, `BEDROCK_MODEL_ID`, and either `AWS_PROFILE` or `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (plus `AWS_SESSION_TOKEN` for workshop keys). Never put keys in `web/`. The app still runs without AWS (**Keyword fallback**).
+
+Open `http://localhost:5173` on **that same computer**. Video path: **Use sample** → **Create incident record** → answer the one or two questions → **Plan next steps** → **Add more evidence** → **Plan next steps** again.
+
+## What each important file does
+
+| Path | Purpose |
+|---|---|
+| `web/src/App.tsx` | Screens: intake, one question, record, next-action card |
+| `web/src/evidence.ts` | On-device OCR and secret redaction before extract |
+| `web/src/intake.ts` | Builds the facts-only incident record |
+| `web/src/engine.ts` | Local rules: stage, risk, which one question to ask |
+| `web/src/indicators.ts` | Link / claimed-org / masked phone check (no request is made) |
+| `web/src/sources.ts` | Official URLs, playbook copy, **Use sample** message |
+| `web/src/assessApi.ts` / `actionApi.ts` | Calls the Python graph; falls back to local rules |
+| `web/vite.config.ts` | `POST /intake`; proxies `/assess` `/action` `/memory` to port 8080 |
+| `graph/app.py` | FastAPI: `/assess`, `/action`, `/memory`, `/invocations` |
+| `graph/workflow.py` | LangGraph: `assess → safety_gate`, `retrieve → action_card`, thread memory |
+| `graph/state.py` | Pydantic incident / assess / action schemas |
+| `graph/nodes/assess.py` | Bedrock classify, or rules if unset/fail |
+| `graph/nodes/safety_gate.py` | Deterministic urgent-stage floor |
+| `graph/nodes/retrieve.py` | Allow-listed official playbook lookup |
+| `graph/nodes/action_card.py` | Builds the next-action card (never places a call) |
+| `graph/fallback.py` | Keyword assess baseline |
+| `graph/envload.py` | Loads repo-root `.env` |
+| `graph/requirements.txt` | Python dependencies for the venv |
+| `.env.example` | Required path variables; copy to `.env` |
+| `graph/fixtures/` + `eval_assess.py` | Small labelled cases (optional; results go on slides) |
+| `skills/` | Team design/safety checklists, not required to run |
+
+## Product concept
 
 ## Product concept
 

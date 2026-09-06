@@ -190,4 +190,4 @@ export const FLAG_BLURB: Record<import("./types").RiskFlag, string> = {
   insufficient_evidence: "One extra answer would change the next step.",
 };
 
-export const SAMPLE_MESSAGE = `OCBC Fraud Department: We detected illegal transactions on your account. To protect your funds, transfer the remaining balance to this safe account via PayNow 9123 4567. Stay on the line and do not inform anyone. Reply YES to confirm.`;
+export const SAMPLE_MESSAGE = `OCBC Fraud Department: We detected illegal transactions on your account. To protect your funds, transfer the remaining balance to this safe account via PayNow 9123 4567 or verify at https://ocbc-secure-login.xyz/paynow. Stay on the line and do not inform anyone. Reply YES to confirm.`;
